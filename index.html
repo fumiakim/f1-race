@@ -138,8 +138,10 @@ const offDecel    = -maxSpeed / 2.6;
 const offLimit    = maxSpeed / 4;
 const centrifugal = 0.32;
 
-const CAR_WORLD_W = 900;                    // ライバル車の見かけ幅(world)
-const HIT_W       = 0.9;                    // 当たり判定 x（路面比）
+const CAR_WORLD_W = 720;                    // 車の見かけ幅(world)
+const PLAYER_CAR_W= 0.272;                  // 自車の描画幅（画面幅に対する比）
+// 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
+const HIT_RATIO   = 0.90;
 const TOTAL_LAPS  = 3;
 
 // ---- 状態 -----------------------------------------------------------
@@ -644,7 +646,7 @@ function collideWith(p, dz, otherX, otherSpeed, carW){
   if(p.hitTimer > 0) return;
   if(!(dz < segmentLength*1.8 && dz > -segmentLength*1.0)) return;
   // 判定は見た目の車幅(=carW)よりやや狭くして、かすった程度では当たらないようにする
-  if(Math.abs(p.playerX - otherX) >= (carW+HIT_W)/2*0.60) return;
+  if(Math.abs(p.playerX - otherX) >= carW * HIT_RATIO) return;
   // 接触 → 火花＋著しく速度低下
   p.speed = Math.min(p.speed*0.18, otherSpeed*0.45);
   p.playerX += (p.playerX>=otherX?1:-1) * 0.16;
@@ -1044,7 +1046,7 @@ function renderMinimap(bx, by, size, me){
 function renderPlayer(p){
   if(state==='title') return;
   const bob = Math.sin(p.position/segmentLength*0.7 + performance.now()/120)* (p.speed>0? U.limit(p.speed/maxSpeed*1.6,0,1.6):0);
-  const w = W*0.34;
+  const w = W*PLAYER_CAR_W;
   const cx = W/2 + p.steerVis*8;
   const baseY = H*0.92 + bob;
   drawF1(cx, baseY, w, p.color, p.steerVis);
@@ -1343,6 +1345,7 @@ requestAnimationFrame(frame);
 
 // タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
+
 
 
 })();
