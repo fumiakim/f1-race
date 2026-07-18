@@ -616,8 +616,9 @@ function update(dt){
     }
     r.prevDz = dz;
     // 衝突: z 近接 & x 重なり
-    if(hitTimer<=0 && dz < segmentLength*2.2 && dz > -segmentLength*1.2){
-      if(Math.abs(playerX - r.offset) < (carW+HIT_W)/2*0.72){
+    // 判定は見た目の車幅(=carW)よりやや狭くして、かすった程度では当たらないようにする
+    if(hitTimer<=0 && dz < segmentLength*1.8 && dz > -segmentLength*1.0){
+      if(Math.abs(playerX - r.offset) < (carW+HIT_W)/2*0.60){
         // 接触 → 火花＋著しく速度低下
         speed = Math.min(speed*0.18, r.speed*0.45);
         playerX += (playerX>=r.offset?1:-1) * 0.16;
