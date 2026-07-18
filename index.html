@@ -347,21 +347,34 @@ function buildTrack(){
 function buildTrackMap(){
   const raw = [];
   const n = segments.length;
+  if(!n) return [];
   const K = 0.006;                      // カーブ値→角度の係数
   // 1周でちょうど360°回るよう、不足分を全セグメントへ均等配分する。
-  // （実コースは幾何的に閉じていないが、こうすると見取図が周回コースの形になる）
   let sum = 0;
   for(const s of segments) sum += s.curve;
   const adjust = (Math.PI*2 - sum*K) / n;
+
+  // 軌跡を積分する。heading=0 を画面上方向とし、右カーブ(curve>0)が
+  // 画面でも右へ曲がるようにする（画面座標は下が +y なので cos を反転）。
   let heading = 0, x = 0, y = 0;
   const STEP = 4;                       // 4セグメントごとにサンプル
+  raw.push({x, y});                     // 始点（スタート/フィニッシュ地点）
   for(let i=0;i<n;i++){
     heading += segments[i].curve * K + adjust;
     x += Math.sin(heading);
-    y += Math.cos(heading);
-    if(i % STEP === 0) raw.push({x, y});
+    y -= Math.cos(heading);
+    if((i+1) % STEP === 0) raw.push({x, y});
   }
-  if(!raw.length) return [];
+  if(raw.length < 2) return [];
+
+  // スタートとゴールを同一地点にする：閉じ誤差を全点へ線形配分して輪を閉じる
+  const ex = raw[raw.length-1].x - raw[0].x;
+  const ey = raw[raw.length-1].y - raw[0].y;
+  const m = raw.length - 1;
+  for(let i=0;i<=m;i++){
+    raw[i].x -= ex * (i/m);
+    raw[i].y -= ey * (i/m);
+  }
   let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
   for(const p of raw){
     if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x;
@@ -881,17 +894,22 @@ function renderMinimap(bx, by, size){
   ctx.fillStyle='#ffffff';
   ctx.fillRect(MX(trackMap[0])-1.5, MY(trackMap[0])-1.5, 3, 3);
 
+  // 周回位置(0..1) → 軌跡上の点。終点は始点と同一なので (長さ-1) で割り当てる
+  const at = t => {
+    const L = trackMap.length;
+    const u = ((t % 1) + 1) % 1;
+    return trackMap[Math.min(L-1, Math.floor(u*(L-1)))];
+  };
+
   // ライバル位置
   ctx.fillStyle='#f0d040';
   for(const r of rivals){
-    const ri = Math.floor((r.z/trackLength) * trackMap.length) % trackMap.length;
-    const rp = trackMap[(ri+trackMap.length)%trackMap.length];
+    const rp = at(r.z/trackLength);
     ctx.fillRect(MX(rp)-1, MY(rp)-1, 2, 2);
   }
 
   // 自機位置（点滅させて目立たせる）
-  const pi = Math.floor((position/trackLength) * trackMap.length) % trackMap.length;
-  const pp = trackMap[(pi+trackMap.length)%trackMap.length];
+  const pp = at(position/trackLength);
   const blink = (Math.floor(performance.now()/250)%2)===0;
   ctx.fillStyle = blink ? '#ff4040' : '#ff9090';
   ctx.beginPath(); ctx.arc(MX(pp), MY(pp), 2.6, 0, Math.PI*2); ctx.fill();
@@ -1130,7 +1148,6 @@ requestAnimationFrame(frame);
 
 // タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
-
 
 })();
 </script>
