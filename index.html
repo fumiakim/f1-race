@@ -141,7 +141,9 @@ const centrifugal = 0.32;
 const CAR_WORLD_W = 720;                    // 車の見かけ幅(world)
 const PLAYER_CAR_W= 0.272;                  // 自車の描画幅（画面幅に対する比）
 // 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
-const HIT_RATIO   = 0.90;
+const HIT_RATIO   = 0.68;
+// 前後方向の判定半幅(world)。自車の「車体位置」(position + playerZ)を中心に判定する
+const HIT_Z_HALF  = 360;
 const TOTAL_LAPS  = 3;
 
 // ---- 状態 -----------------------------------------------------------
@@ -642,9 +644,10 @@ function update(dt){
 }
 
 // 接触処理（相手はライバル車でも対戦相手でも同じ扱い）
-function collideWith(p, dz, otherX, otherSpeed, carW){
+// dzCar は「自車の車体」から見た相手の前後距離（+ = 前方）
+function collideWith(p, dzCar, otherX, otherSpeed, carW){
   if(p.hitTimer > 0) return;
-  if(!(dz < segmentLength*1.8 && dz > -segmentLength*1.0)) return;
+  if(Math.abs(dzCar) >= HIT_Z_HALF) return;
   // 判定は見た目の車幅(=carW)よりやや狭くして、かすった程度では当たらないようにする
   if(Math.abs(p.playerX - otherX) >= carW * HIT_RATIO) return;
   // 接触 → 火花＋著しく速度低下
@@ -705,23 +708,26 @@ function updatePlayer(p, dt){
     const r = rivals[i];
     // 符号付き相対位置（+ = 前方 / - = 後方）を [-half, half) に正規化
     const dz = ((r.z - p.position + half) % trackLength + trackLength) % trackLength - half;
+    // 自車の車体は position+playerZ にあるので、車体基準の距離へ補正する
+    const dzCar = dz - playerZ;
     // 追い越し判定: 前フレームは前方(+)、今フレームは後方(-) に変わった＝1台抜いた。
     // コース反対側での ±half 折り返しを誤検出しないよう、近距離での交差のみ数える。
     const NEAR = segmentLength*30;
     const prev = p.prevDz[i];
-    if(prev !== undefined && prev > 0 && dz <= 0 && prev < NEAR && -dz < NEAR){
+    if(prev !== undefined && prev > 0 && dzCar <= 0 && prev < NEAR && -dzCar < NEAR){
       p.passed++; if(p===players[0]) sfx.blip(880,0.05);
     }
-    p.prevDz[i] = dz;
-    collideWith(p, dz, r.offset, r.speed, carW);
+    p.prevDz[i] = dzCar;
+    collideWith(p, dzCar, r.offset, r.speed, carW);
   }
 
   // 対戦相手との接触（2人対戦）
+  // 双方の車体が同じだけ前(playerZ)にあるため、位置の差がそのまま車体間の距離になる
   if(mode===2){
     for(const o of players){
       if(o===p) continue;
-      const dz = ((o.position - p.position + half) % trackLength + trackLength) % trackLength - half;
-      collideWith(p, dz, o.playerX, o.speed, carW);
+      const dzCar = ((o.position - p.position + half) % trackLength + trackLength) % trackLength - half;
+      collideWith(p, dzCar, o.playerX, o.speed, carW);
     }
   }
 
@@ -1345,6 +1351,7 @@ requestAnimationFrame(frame);
 
 // タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
+
 
 
 
