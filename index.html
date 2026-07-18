@@ -143,7 +143,7 @@ let segments = [];
 let trackLength = 0;
 let rivals = [];
 
-let state = 'title';        // title | countdown | race | finish | gameover
+let state = 'title';        // title | select | countdown | race | finish | gameover
 let position = 0;
 let playerX  = 0;
 let speed    = 0;
@@ -162,6 +162,11 @@ let finishRank = 1;
 let passed = 0;             // 追い越し数
 let sparks = [];            // 衝突時の火花パーティクル
 let hitTimer = 0;           // 衝突ペナルティのクールダウン
+let courseIndex = 0;        // 選択中のコース
+let selIndex = 0;           // コース選択画面のカーソル
+let trackMap = [];          // ミニマップ用のコース軌跡(正規化済み)
+let courseMaps = [];        // 全コースの見取図(選択画面のプレビュー用・起動時に一度だけ計算)
+let newRecord = false;      // 今回ベストラップを更新したか
 
 // ============================================================
 //  Util
@@ -227,22 +232,98 @@ function addSCurves(){
   addRoad(ROAD.LEN.MEDIUM,ROAD.LEN.MEDIUM,ROAD.LEN.MEDIUM,-ROAD.CURVE.MEDIUM,-ROAD.HILL.MEDIUM);
 }
 
+// ---- コース定義（5種）------------------------------------------------
+const L = ROAD.LEN, C = ROAD.CURVE, HL = ROAD.HILL;
+const COURSES = [
+  {
+    id:'beginner', name:'BEGINNER', desc:'EASY / FLAT', laps:3, rivals:6, timeStart:80, timeBonus:40,
+    build(){
+      addStraight(L.LONG);
+      addCurve(L.MEDIUM,  C.EASY,   HL.NONE);
+      addStraight(L.MEDIUM);
+      addCurve(L.MEDIUM, -C.EASY,   HL.NONE);
+      addStraight(L.LONG);
+      addCurve(L.LONG,    C.MEDIUM, HL.LOW);
+      addStraight(L.MEDIUM);
+      addCurve(L.MEDIUM, -C.EASY,  -HL.LOW);
+      addStraight(L.LONG);
+      addCurve(L.MEDIUM, -C.MEDIUM, HL.NONE);
+      addStraight(L.MEDIUM);
+    }
+  },
+  {
+    id:'seaside', name:'SEASIDE', desc:'S-CURVES', laps:3, rivals:8, timeStart:75, timeBonus:35,
+    build(){
+      addStraight(L.MEDIUM);
+      addSCurves();
+      addStraight(L.SHORT);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.LOW);
+      addSCurves();
+      addCurve(L.MEDIUM, -C.MEDIUM,-HL.LOW);
+      addStraight(L.MEDIUM);
+      addSCurves();
+      addStraight(L.SHORT);
+    }
+  },
+  {
+    id:'mountain', name:'MOUNTAIN', desc:'HILLY', laps:3, rivals:8, timeStart:80, timeBonus:38,
+    build(){
+      addStraight(L.SHORT);
+      addHill(L.MEDIUM,   HL.MEDIUM);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.HIGH);
+      addHill(L.MEDIUM,  -HL.MEDIUM);
+      addCurve(L.LONG,   -C.MEDIUM, HL.MEDIUM);
+      addHill(L.MEDIUM,  -HL.HIGH);
+      addStraight(L.MEDIUM);
+      addCurve(L.MEDIUM,  C.EASY,   HL.MEDIUM);
+      addHill(L.LONG,    -HL.MEDIUM);
+      addCurve(L.MEDIUM, -C.EASY,   HL.LOW);
+      addStraight(L.SHORT);
+    }
+  },
+  {
+    id:'technical', name:'TECHNICAL', desc:'TIGHT TURNS', laps:3, rivals:9, timeStart:78, timeBonus:36,
+    build(){
+      addStraight(L.SHORT);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addCurve(L.SHORT,  -C.HARD,   HL.LOW);
+      addStraight(L.SHORT);
+      addCurve(L.SHORT,  -C.HARD,   HL.NONE);
+      addCurve(L.SHORT,   C.HARD,  -HL.LOW);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.NONE);
+      addCurve(L.SHORT,  -C.HARD,   HL.LOW);
+      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addCurve(L.SHORT,  -C.MEDIUM,-HL.LOW);
+      addCurve(L.MEDIUM, -C.HARD,   HL.NONE);
+      addStraight(L.SHORT);
+    }
+  },
+  {
+    id:'grandprix', name:'GRAND PRIX', desc:'LONG / HARD', laps:3, rivals:9, timeStart:95, timeBonus:45,
+    build(){
+      addStraight(L.SHORT);
+      addHill(L.SHORT, HL.LOW);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.LOW);
+      addStraight(L.SHORT);
+      addSCurves();
+      addCurve(L.LONG,   -C.MEDIUM, HL.MEDIUM);
+      addStraight(L.MEDIUM);
+      addCurve(L.LONG,    C.HARD,  -HL.LOW);
+      addSCurves();
+      addHill(L.MEDIUM,  -HL.MEDIUM);
+      addCurve(L.MEDIUM, -C.HARD,   HL.NONE);
+      addStraight(L.MEDIUM);
+      addCurve(L.MEDIUM,  C.EASY,   HL.LOW);
+      addStraight(L.SHORT);
+    }
+  }
+];
+function course(){ return COURSES[courseIndex] || COURSES[0]; }
+
 function buildTrack(){
   segments = [];
-  addStraight(ROAD.LEN.SHORT);          // スタート/フィニッシュ直線
-  addHill(ROAD.LEN.SHORT, ROAD.HILL.LOW);
-  addCurve(ROAD.LEN.MEDIUM, ROAD.CURVE.MEDIUM, ROAD.HILL.LOW);
-  addStraight(ROAD.LEN.SHORT);
-  addSCurves();
-  addCurve(ROAD.LEN.LONG, -ROAD.CURVE.MEDIUM, ROAD.HILL.MEDIUM);
-  addStraight(ROAD.LEN.MEDIUM);
-  addCurve(ROAD.LEN.LONG, ROAD.CURVE.HARD, -ROAD.HILL.LOW);
-  addSCurves();
-  addHill(ROAD.LEN.MEDIUM, -ROAD.HILL.MEDIUM);
-  addCurve(ROAD.LEN.MEDIUM, -ROAD.CURVE.HARD, ROAD.HILL.NONE);
-  addStraight(ROAD.LEN.MEDIUM);
-  addCurve(ROAD.LEN.MEDIUM, ROAD.CURVE.EASY, ROAD.HILL.LOW);
-  addStraight(ROAD.LEN.SHORT);          // 終端は直線・平坦
+  course().build();
 
   // ループ継ぎ目の段差防止：全体を線形補正して始点・終点の標高を必ず0に揃える
   // （丘の起伏は保ったまま、周回時にコースが上下ジャンプしないようにする）
@@ -258,12 +339,44 @@ function buildTrack(){
   segments[0].marker = true;
 
   trackLength = segments.length * segmentLength;
+  trackMap = buildTrackMap();
+}
+
+// カーブ値を積分して2Dの見取図（ミニマップ用の軌跡）を作る。
+// 0..1 に正規化し、長辺を基準に中央寄せする。
+function buildTrackMap(){
+  const raw = [];
+  const n = segments.length;
+  const K = 0.006;                      // カーブ値→角度の係数
+  // 1周でちょうど360°回るよう、不足分を全セグメントへ均等配分する。
+  // （実コースは幾何的に閉じていないが、こうすると見取図が周回コースの形になる）
+  let sum = 0;
+  for(const s of segments) sum += s.curve;
+  const adjust = (Math.PI*2 - sum*K) / n;
+  let heading = 0, x = 0, y = 0;
+  const STEP = 4;                       // 4セグメントごとにサンプル
+  for(let i=0;i<n;i++){
+    heading += segments[i].curve * K + adjust;
+    x += Math.sin(heading);
+    y += Math.cos(heading);
+    if(i % STEP === 0) raw.push({x, y});
+  }
+  if(!raw.length) return [];
+  let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+  for(const p of raw){
+    if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x;
+    if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;
+  }
+  const w = Math.max(maxX-minX, 1e-6), h = Math.max(maxY-minY, 1e-6);
+  const s = 1/Math.max(w,h);
+  const offX = (1 - w*s)/2, offY = (1 - h*s)/2;   // 中央寄せ
+  return raw.map(p=>({ x:(p.x-minX)*s + offX, y:(p.y-minY)*s + offY }));
 }
 
 function buildRivals(){
   rivals = [];
   const colors = ['#f0f030','#30c0f0','#f090d0','#ffffff','#f08020','#a060f0','#40e060','#e0e0e0'];
-  const n = 9;
+  const n = course().rivals || 9;
   for(let i=0;i<n;i++){
     const offset = ((i%3)-1) * 0.55;                 // 3レーン
     const z = Math.floor((trackLength/n)*i + trackLength*0.12) % trackLength;
@@ -272,9 +385,29 @@ function buildRivals(){
       z: z,
       color: colors[i%colors.length],
       speed: maxSpeed * (0.30 + 0.10*((i*7)%5)/5),   // プレイヤーより遅い
-      wob: (i*13)%628/100
+      wob: (i*13)%628/100,
+      prevDz: undefined                              // 追い越し判定用（前フレームの相対位置）
     });
   }
+}
+
+// ============================================================
+//  ベストラップの保存 (localStorage・コース別)
+// ============================================================
+const LS_KEY = 'f1race.best.v1';
+function loadBests(){
+  try{ const o = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); return (o && typeof o==='object') ? o : {}; }
+  catch(e){ return {}; }
+}
+function bestOf(id){ const v = loadBests()[id]; return (typeof v==='number' && v>0) ? v : 0; }
+// 更新したら true を返す
+function saveBest(id, t){
+  if(!(t>0)) return false;
+  const all = loadBests();
+  if(all[id] && all[id] <= t) return false;
+  all[id] = t;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(all)); }catch(e){ /* 保存不可でも進行 */ }
+  return true;
 }
 
 // ============================================================
@@ -290,8 +423,20 @@ addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
   if(KEYMAP[e.code]) keys[KEYMAP[e.code]] = true;
 
+  // コース選択画面: 上下でカーソル移動
+  if(state==='select'){
+    if(e.code==='ArrowUp'   || e.code==='KeyW'){ selIndex=(selIndex-1+COURSES.length)%COURSES.length; sfx.blip(560,0.05); }
+    if(e.code==='ArrowDown' || e.code==='KeyS'){ selIndex=(selIndex+1)%COURSES.length;                sfx.blip(560,0.05); }
+  }
+
   if(e.code==='Enter' || e.code==='Space'){
-    if(state==='title' || state==='finish' || state==='gameover') startRace();
+    if(state==='title'){ state='select'; audio.ensure(); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); sfx.blip(760,0.08); }
+    else if(state==='select'){ courseIndex = selIndex; startRace(); }
+    else if(state==='finish' || state==='gameover') state='select';   // 結果画面 → コース選択へ
+  }
+  // レース中/結果画面から選択画面へ戻る
+  if(e.code==='Escape' && (state==='race'||state==='countdown'||state==='finish'||state==='gameover')){
+    audio.stopEngine(); state='select';
   }
   if(e.code==='ShiftLeft' || e.code==='ShiftRight'){
     if(state==='race'){ gearHigh = !gearHigh; sfx.gear(); }
@@ -300,9 +445,11 @@ addEventListener('keydown', e=>{
 }, {passive:false});
 addEventListener('keyup', e=>{ if(KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
 
-// タッチ操作（簡易・画面をタップでスタート）
+// タッチ操作（簡易・画面をタップで進む）
 canvas.addEventListener('pointerdown', ()=>{
-  if(state==='title' || state==='finish' || state==='gameover') startRace();
+  if(state==='title'){ state='select'; audio.ensure(); if(audio.ctx&&audio.ctx.state==='suspended') audio.ctx.resume(); }
+  else if(state==='select'){ courseIndex = selIndex; startRace(); }
+  else if(state==='finish' || state==='gameover') state='select';
 });
 
 // ============================================================
@@ -365,8 +512,8 @@ function startRace(){
   buildRivals();
   position=0; playerX=0; speed=0; gearHigh=false;
   lap=1; raceTime=0; lapStart=0; bestLap=0; lastLap=0; passed=0;
-  timeLeft = 75; shake=0; steerVis=0;
-  sparks = []; hitTimer = 0;
+  timeLeft = course().timeStart; shake=0; steerVis=0;
+  sparks = []; hitTimer = 0; newRecord = false;
   countdown = 3.0;
   state='countdown';
   audio.startEngine();
@@ -375,11 +522,13 @@ function startRace(){
 function onLapComplete(){
   lastLap = raceTime - lapStart;
   if(bestLap===0 || lastLap<bestLap) bestLap=lastLap;
+  // コース別のベストラップを保存（更新時のみ）
+  if(saveBest(course().id, lastLap)) newRecord = true;
   lapStart = raceTime;
   lap++;
-  timeLeft += 35;                        // ラップ完了でタイム加算
+  timeLeft += course().timeBonus;        // ラップ完了でタイム加算
   sfx.lapDone();
-  if(lap > TOTAL_LAPS){
+  if(lap > (course().laps || TOTAL_LAPS)){
     // レース完了
     finishRank = 1 + Math.max(0, rivals.length - passed);
     state='finish';
@@ -440,18 +589,20 @@ function update(dt){
   // ライバルとの当たり判定 + 追い越しカウント
   hitTimer = Math.max(0, hitTimer - dt);
   const carW = CAR_WORLD_W/roadWidth;
+  const half = trackLength/2;
   for(const r of rivals){
     // 進行
-    const before = ((r.z - position)%trackLength + trackLength)%trackLength;
     r.z = (r.z + r.speed*dt) % trackLength;
-    const after  = ((r.z - position)%trackLength + trackLength)%trackLength;
-    // プレイヤーが後方→前方に抜けた
-    if(before < segmentLength*8 && before > 0 && after > trackLength - segmentLength*8 && speed>r.speed){
+    // 符号付き相対位置（+ = 前方 / - = 後方）を [-half, half) に正規化
+    const dz = ((r.z - position + half) % trackLength + trackLength) % trackLength - half;
+    // 追い越し判定: 前フレームは前方(+)、今フレームは後方(-) に変わった＝1台抜いた。
+    // コース反対側での ±half 折り返しを誤検出しないよう、近距離での交差のみ数える。
+    const NEAR = segmentLength*30;
+    if(r.prevDz !== undefined && r.prevDz > 0 && dz <= 0 && r.prevDz < NEAR && -dz < NEAR){
       passed++; sfx.blip(880,0.05);
     }
+    r.prevDz = dz;
     // 衝突: z 近接 & x 重なり
-    let dz = ((r.z - position)%trackLength);
-    if(dz>trackLength/2) dz-=trackLength;
     if(hitTimer<=0 && dz < segmentLength*2.2 && dz > -segmentLength*1.2){
       if(Math.abs(playerX - r.offset) < (carW+HIT_W)/2*0.72){
         // 接触 → 火花＋著しく速度低下
@@ -549,6 +700,7 @@ function render(){
   // --- HUD & 画面状態 ---
   renderHUD();
   if(state==='title')      renderTitle();
+  if(state==='select')     renderSelect();
   if(state==='countdown')  renderCountdown();
   if(state==='finish')     renderFinish();
   if(state==='gameover')   renderGameOver();
@@ -704,6 +856,49 @@ function renderRival(r, seg){
   }
 }
 
+// コースの見取図＋自機位置（左上のミニマップ）
+function renderMinimap(bx, by, size){
+  if(!trackMap.length) return;
+  // 背景パネル
+  ctx.fillStyle='rgba(10,12,20,0.62)';
+  ctx.fillRect(bx, by, size, size);
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1;
+  ctx.strokeRect(bx+0.5, by+0.5, size-1, size-1);
+
+  const pad = 4, inner = size - pad*2;
+  const MX = p => bx + pad + p.x*inner;
+  const MY = p => by + pad + p.y*inner;
+
+  // コースの軌跡
+  ctx.strokeStyle='#8fa0b8'; ctx.lineWidth=1.5;
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(MX(trackMap[0]), MY(trackMap[0]));
+  for(let i=1;i<trackMap.length;i++) ctx.lineTo(MX(trackMap[i]), MY(trackMap[i]));
+  ctx.stroke();
+
+  // スタート/フィニッシュ
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(MX(trackMap[0])-1.5, MY(trackMap[0])-1.5, 3, 3);
+
+  // ライバル位置
+  ctx.fillStyle='#f0d040';
+  for(const r of rivals){
+    const ri = Math.floor((r.z/trackLength) * trackMap.length) % trackMap.length;
+    const rp = trackMap[(ri+trackMap.length)%trackMap.length];
+    ctx.fillRect(MX(rp)-1, MY(rp)-1, 2, 2);
+  }
+
+  // 自機位置（点滅させて目立たせる）
+  const pi = Math.floor((position/trackLength) * trackMap.length) % trackMap.length;
+  const pp = trackMap[(pi+trackMap.length)%trackMap.length];
+  const blink = (Math.floor(performance.now()/250)%2)===0;
+  ctx.fillStyle = blink ? '#ff4040' : '#ff9090';
+  ctx.beginPath(); ctx.arc(MX(pp), MY(pp), 2.6, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(MX(pp), MY(pp), 2.6, 0, Math.PI*2); ctx.stroke();
+}
+
 function renderPlayer(){
   if(state==='title') return;
   const bob = Math.sin(position/segmentLength*0.7 + performance.now()/120)* (speed>0? U.limit(speed/maxSpeed*1.6,0,1.6):0);
@@ -766,16 +961,23 @@ function panel(x,y,w,h){
 }
 
 function renderHUD(){
-  if(state==='title') return;
+  // 結果画面は情報を重ねず、専用レイアウトのみ見せる
+  if(state==='title' || state==='select' || state==='finish' || state==='gameover') return;
   const kmh = Math.round(speed/maxSpeed * 300);
 
-  // 上段: LAP / TIME LEFT / RANK
+  const laps = course().laps || TOTAL_LAPS;
+
+  // 上段: LAP / TIME LEFT / PASS
   panel(4,4,W-8,22);
-  pxText('LAP '+Math.min(lap,TOTAL_LAPS)+'/'+TOTAL_LAPS, 10, 20, 11, '#ffe040');
+  pxText('LAP '+Math.min(lap,laps)+'/'+laps, 10, 20, 11, '#ffe040');
   const tl = timeLeft;
   const tcol = tl<10 ? (Math.floor(tl*4)%2? '#ff4040':'#ffffff') : '#ffffff';
   pxText('TIME '+Math.ceil(tl), W/2, 20, 12, tcol, 'center');
   pxText('PASS '+passed, W-10, 20, 11, '#8fe0ff', 'right');
+
+  // 左上: コースの見取図＋自機位置
+  renderMinimap(6, 30, 56);
+  pxText(course().name, 6, 97, 9, '#b8c4d4');
 
   // 下段左: スピード
   panel(4, H-34, 96, 30);
@@ -793,7 +995,7 @@ function renderHUD(){
 }
 
 function centerBox(){
-  ctx.fillStyle='rgba(0,0,10,0.55)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(0,0,10,0.82)'; ctx.fillRect(0,0,W,H);
 }
 
 function renderTitle(){
@@ -810,7 +1012,49 @@ function renderTitle(){
 
   const blink = Math.floor(performance.now()/500)%2;
   if(blink) pxText('PUSH  ENTER', W/2, 210, 14, '#ffffff', 'center');
-  pxText('X:加速  Z:ブレーキ  ←→:ハンドル  Shift:ギア', W/2, 228, 9, '#9fb0c8', 'center');
+  // 低解像度では漢字が潰れるため操作説明は英字で
+  pxText('X:ACCEL  Z:BRAKE  <>:STEER  SHIFT:GEAR', W/2, 228, 9, '#9fb0c8', 'center');
+}
+
+// コース選択画面（ベストラップも表示）
+function renderSelect(){
+  ctx.fillStyle='#0a0c14'; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<W/10+1;i++){ ctx.fillStyle=(i%2)?'#111':'#eee'; ctx.fillRect(i*10, 8, 10, 6); }
+  pxText('SELECT COURSE', W/2, 34, 18, '#ffffff', 'center');
+
+  const bests = loadBests();
+  const top = 48, rowH = 30;
+  for(let i=0;i<COURSES.length;i++){
+    const c = COURSES[i], y = top + i*rowH, sel = (i===selIndex);
+    if(sel){
+      ctx.fillStyle='rgba(224,32,32,0.30)'; ctx.fillRect(4, y-11, W-8, rowH-4);
+      ctx.strokeStyle='#e02020'; ctx.lineWidth=1; ctx.strokeRect(4.5, y-10.5, W-9, rowH-5);
+    }
+    pxText(sel?'>':' ', 10, y, 12, '#ffd040');
+    pxText(c.name, 22, y, 13, sel?'#ffffff':'#9fb0c8');
+    pxText(c.desc, 22, y+11, 8, '#7f8ba0');
+    // 見取図プレビュー（全コース分を薄く、選択中は明るく）
+    if(courseMaps[i] && courseMaps[i].length){
+      drawMapPath(courseMaps[i], W-118, y-10, 26, sel?'#e8eef8':'#5a6472');
+    }
+    // ベストラップ
+    const b = bests[c.id];
+    pxText('BEST', W-8, y-2, 9, '#7f8ba0', 'right');
+    pxText(b? fmtTime(b) : '--', W-8, y+10, 11, b?'#7fe0a0':'#5a6472', 'right');
+  }
+  pxText('UP/DOWN: SELECT    ENTER: START', W/2, H-14, 9, '#9fb0c8', 'center');
+}
+
+// 任意の軌跡データを小さく描く（コース選択のプレビュー用）
+function drawMapPath(pts, bx, by, size, color){
+  if(!pts.length) return;
+  const pad=2, inner=size-pad*2;
+  ctx.strokeStyle=color||'#8fa0b8'; ctx.lineWidth=1;
+  ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(bx+pad+pts[0].x*inner, by+pad+pts[0].y*inner);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(bx+pad+pts[i].x*inner, by+pad+pts[i].y*inner);
+  ctx.stroke();
 }
 
 function renderCountdown(){
@@ -824,23 +1068,42 @@ function renderCountdown(){
   }
 }
 
+// 順位を 1st / 2nd / 3rd / 4th ... で表す（低解像度でも読める英字表記）
+function ordinal(n){
+  const s=['th','st','nd','rd'], v=n%100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+
 function renderFinish(){
   centerBox();
-  pxText('FINISH!', W/2, 60, 34, '#40ff60', 'center');
-  pxText('順位  '+finishRank+' 位', W/2, 96, 16, '#ffd040', 'center');
-  pxText('TOTAL '+fmtTime(raceTime), W/2, 124, 14, '#ffffff', 'center');
-  pxText('BEST LAP '+fmtTime(bestLap), W/2, 146, 12, '#7fe0a0', 'center');
-  pxText('追い越し '+passed+' 台', W/2, 168, 11, '#8fe0ff', 'center');
+  pxText('FINISH!', W/2, 46, 30, '#40ff60', 'center');
+  pxText(course().name, W/2, 66, 10, '#9fb0c8', 'center');
+  // 順位（漢字は低解像度で潰れるため英字表記）
+  pxText('RANK', W/2-34, 96, 12, '#9fb0c8', 'right');
+  pxText(ordinal(finishRank), W/2-24, 98, 22, '#ffd040', 'left');
+  pxText('TOTAL', W/2-34, 122, 10, '#9fb0c8', 'right');
+  pxText(fmtTime(raceTime), W/2-24, 122, 13, '#ffffff', 'left');
+  pxText('BEST LAP', W/2-34, 142, 10, '#9fb0c8', 'right');
+  pxText(bestLap? fmtTime(bestLap):'--', W/2-24, 142, 13, '#7fe0a0', 'left');
+  pxText('OVERTAKE', W/2-34, 160, 10, '#9fb0c8', 'right');
+  pxText(String(passed), W/2-24, 160, 12, '#8fe0ff', 'left');
+  // 自己ベスト更新
+  if(newRecord && Math.floor(performance.now()/300)%2){
+    pxText('NEW RECORD!', W/2, 182, 13, '#ff70c0', 'center');
+  }
   const blink = Math.floor(performance.now()/500)%2;
-  if(blink) pxText('ENTER でリスタート', W/2, 206, 12, '#ffffff', 'center');
+  if(blink) pxText('PUSH ENTER', W/2, 212, 13, '#ffffff', 'center');
+  pxText('SELECT COURSE', W/2, 228, 9, '#9fb0c8', 'center');
 }
 
 function renderGameOver(){
   centerBox();
+  const laps = course().laps || TOTAL_LAPS;
   pxText('TIME UP', W/2, 96, 36, '#ff4040', 'center');
-  pxText('LAP '+Math.min(lap,TOTAL_LAPS)+'/'+TOTAL_LAPS+' で終了', W/2, 128, 13, '#ffffff', 'center');
+  pxText('LAP '+Math.min(lap,laps)+' / '+laps, W/2, 126, 14, '#ffffff', 'center');
+  if(bestLap) pxText('BEST LAP '+fmtTime(bestLap), W/2, 148, 11, '#7fe0a0', 'center');
   const blink = Math.floor(performance.now()/500)%2;
-  if(blink) pxText('ENTER でリスタート', W/2, 168, 12, '#ffffff', 'center');
+  if(blink) pxText('PUSH ENTER', W/2, 180, 12, '#ffffff', 'center');
 }
 
 // ============================================================
@@ -855,11 +1118,19 @@ function frame(now){
   render();
   requestAnimationFrame(frame);
 }
-buildTrack();      // タイトル背景用
+// 全コースの見取図を先に計算しておく（選択画面のプレビュー用）
+function precomputeCourseMaps(){
+  const saved = courseIndex;
+  courseMaps = COURSES.map((c,i)=>{ courseIndex = i; buildTrack(); return trackMap; });
+  courseIndex = saved;
+  buildTrack();    // 選択中コースの状態に戻す
+}
+precomputeCourseMaps();   // タイトル背景用のトラックもここで構築される
 requestAnimationFrame(frame);
 
 // タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
+
 
 })();
 </script>
