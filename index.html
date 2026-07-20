@@ -503,10 +503,14 @@ addEventListener('keydown', e=>{
   // ギア切替（プレイヤーごと）
   if(state==='race'){
     for(let i=0;i<players.length;i++){
-      if(gearKeysFor(i).includes(e.code)){ players[i].gearHigh = !players[i].gearHigh; sfx.gear(); }
+      if(gearKeysFor(i).includes(e.code)){ players[i].gearHigh = !players[i].gearHigh; sfx.gear(panOf(players[i])); }
     }
   }
-  if(e.code==='KeyM'){ audio.muted = !audio.muted; if(audio.muted) audio.stopEngine(); }
+  if(e.code==='KeyM'){
+    audio.muted = !audio.muted;
+    if(audio.muted) audio.stopEngine();
+    else if(state==='race' || state==='countdown') audio.startEngine();   // 解除でエンジン音を復帰
+  }
 }, {passive:false});
 addEventListener('keyup', e=>{ setKey(e.code, false); });
 
@@ -524,51 +528,74 @@ canvas.addEventListener('pointerdown', ()=>{
 // ============================================================
 //  サウンド (Web Audio, 依存なし)
 // ============================================================
+// 2人対戦では P1=左スピーカー / P2=右スピーカー に振り分ける（1人プレイは中央）
+function panOf(p){ return (mode===2 && p) ? (p.id===1 ? -1 : 1) : 0; }
+
 const audio = {
-  ctx:null, muted:false, engine:null, engGain:null, lfo:null,
+  ctx:null, muted:false, engines:[],
   ensure(){
     if(this.ctx) return;
     try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ this.ctx=null; }
   },
+  // 出力先ノードを返す（pan: -1=左 / 0=中央 / +1=右）
+  // StereoPanner 非対応の環境では中央出力にフォールバックする
+  out(pan){
+    if(!this.ctx) return null;
+    if(!pan || !this.ctx.createStereoPanner) return this.ctx.destination;
+    const n = this.ctx.createStereoPanner();
+    n.pan.value = pan;
+    n.connect(this.ctx.destination);
+    return n;
+  },
+  // プレイヤーごとに独立したエンジン音を作る
   startEngine(){
-    if(!this.ctx || this.muted || this.engine) return;
-    const o = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    o.type='sawtooth'; o.frequency.value=60;
-    g.gain.value=0.0;
-    o.connect(g); g.connect(this.ctx.destination); o.start();
-    this.engine=o; this.engGain=g;
+    if(!this.ctx || this.muted || this.engines.length) return;
+    for(const p of players){
+      const pan = panOf(p);
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type='sawtooth'; o.frequency.value=60;
+      g.gain.value=0.0;
+      o.connect(g); g.connect(this.out(pan)); o.start();
+      this.engines.push({osc:o, gain:g, player:p, pan});
+    }
   },
   stopEngine(){
-    if(this.engine){ try{this.engine.stop();}catch(e){} this.engine=null; this.engGain=null; }
+    for(const e of this.engines){ try{ e.osc.stop(); }catch(err){} }
+    this.engines.length = 0;
   },
-  update(sp, hiGear){
-    if(!this.engine||!this.ctx) return;
-    const p = sp/maxSpeed;
-    this.engine.frequency.setTargetAtTime(55 + p*230 + (hiGear?40:0), this.ctx.currentTime, 0.05);
-    this.engGain.gain.setTargetAtTime(this.muted?0:(0.02+p*0.05), this.ctx.currentTime, 0.1);
+  update(){
+    if(!this.ctx) return;
+    for(const e of this.engines){
+      const p = e.player;
+      const sp = (state==='countdown') ? 0 : p.speed;   // カウントダウン中はアイドリング
+      const r = sp/maxSpeed;
+      e.osc.frequency.setTargetAtTime(55 + r*230 + (p.gearHigh?40:0), this.ctx.currentTime, 0.05);
+      e.gain.gain.setTargetAtTime(this.muted?0:(0.02+r*0.05), this.ctx.currentTime, 0.1);
+    }
   }
 };
+// 効果音はすべて pan 指定可（省略時は中央）
 const sfx = {
-  blip(freq,dur,type){
+  blip(freq,dur,type,pan){
     if(!audio.ctx||audio.muted) return;
     const o=audio.ctx.createOscillator(), g=audio.ctx.createGain();
     o.type=type||'square'; o.frequency.value=freq;
     g.gain.value=0.06; g.gain.exponentialRampToValueAtTime(0.0001, audio.ctx.currentTime+dur);
-    o.connect(g); g.connect(audio.ctx.destination); o.start(); o.stop(audio.ctx.currentTime+dur);
+    o.connect(g); g.connect(audio.out(pan||0)); o.start(); o.stop(audio.ctx.currentTime+dur);
   },
-  gear(){ this.blip(220,0.08,'square'); },
-  crash(){
+  gear(pan){ this.blip(220,0.08,'square',pan); },
+  crash(pan){
     if(!audio.ctx||audio.muted) return;
     const dur=0.35, sr=audio.ctx.sampleRate;
     const buf=audio.ctx.createBuffer(1, sr*dur, sr), d=buf.getChannelData(0);
     for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
     const src=audio.ctx.createBufferSource(); src.buffer=buf;
     const g=audio.ctx.createGain(); g.gain.value=0.25;
-    src.connect(g); g.connect(audio.ctx.destination); src.start();
+    src.connect(g); g.connect(audio.out(pan||0)); src.start();
   },
-  count(hi){ this.blip(hi?660:440, 0.12, 'square'); },
-  lapDone(){ this.blip(523,0.1); setTimeout(()=>this.blip(784,0.14),110); }
+  count(hi){ this.blip(hi?660:440, 0.12, 'square'); },   // カウントダウンは両者共通=中央
+  lapDone(pan){ this.blip(523,0.1,'square',pan); setTimeout(()=>this.blip(784,0.14,'square',pan),110); }
 };
 
 // ============================================================
@@ -590,6 +617,7 @@ function startRace(){
   winner = 0;
   countdown = 3.0;
   state='countdown';
+  audio.stopEngine();     // エンジン音は players を参照するので必ず作り直す
   audio.startEngine();
 }
 
@@ -601,7 +629,7 @@ function onLapComplete(p){
   p.lapStart = p.raceTime;
   p.lap++;
   if(mode===1) p.timeLeft += course().timeBonus;   // ラップ完了でタイム加算
-  sfx.lapDone();
+  sfx.lapDone(panOf(p));
 
   if(p.lap > (course().laps || TOTAL_LAPS)){
     p.finished = true;
@@ -628,7 +656,7 @@ function update(dt){
       state='race'; sfx.count(true);
       for(const p of players){ p.lapStart=0; p.raceTime=0; }
     }
-    audio.update(0);
+    audio.update();
     return;
   }
 
@@ -640,7 +668,7 @@ function update(dt){
     updateSparks(p, dt);
   }
 
-  audio.update(players.length ? players[0].speed : 0, players.length ? players[0].gearHigh : false);
+  audio.update();
 }
 
 // 接触処理（相手はライバル車でも対戦相手でも同じ扱い）
@@ -653,7 +681,7 @@ function collideWith(p, dzCar, otherX, otherSpeed, carW){
   // 接触 → 火花＋著しく速度低下
   p.speed = Math.min(p.speed*0.18, otherSpeed*0.45);
   p.playerX += (p.playerX>=otherX?1:-1) * 0.16;
-  p.shake = 6.0; p.hitTimer = 0.35; sfx.crash();
+  p.shake = 6.0; p.hitTimer = 0.35; sfx.crash(panOf(p));
   const hx = W/2 + p.steerVis*8 + U.limit(otherX-p.playerX,-0.7,0.7)*46;
   spawnSparks(p, hx, H*0.60, 22);
 }
@@ -664,7 +692,7 @@ function updatePlayer(p, dt){
   // 制限タイムは1人プレイのみ（対戦は先着でゴールを競う）
   if(mode===1){
     p.timeLeft -= dt;
-    if(p.timeLeft<=0){ p.timeLeft=0; state='gameover'; audio.stopEngine(); sfx.crash(); return; }
+    if(p.timeLeft<=0){ p.timeLeft=0; state='gameover'; audio.stopEngine(); sfx.crash(panOf(p)); return; }
   }
 
   const seg = findSegment(p.position + playerZ);
@@ -715,7 +743,7 @@ function updatePlayer(p, dt){
     const NEAR = segmentLength*30;
     const prev = p.prevDz[i];
     if(prev !== undefined && prev > 0 && dzCar <= 0 && prev < NEAR && -dzCar < NEAR){
-      p.passed++; if(p===players[0]) sfx.blip(880,0.05);
+      p.passed++; sfx.blip(880,0.05,'square',panOf(p));
     }
     p.prevDz[i] = dzCar;
     collideWith(p, dzCar, r.offset, r.speed, carW);
@@ -1351,6 +1379,7 @@ requestAnimationFrame(frame);
 
 // タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
+
 
 
 
