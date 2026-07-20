@@ -215,7 +215,9 @@ function findSegment(z){ const n=segments.length; return segments[((Math.floor(z
 // ============================================================
 const ROAD = {
   LEN:  { NONE:0, SHORT:12, MEDIUM:24, LONG:48 },
-  CURVE:{ NONE:0, EASY:2, MEDIUM:4, HARD:6 },
+  // 遠心力がステアリングに勝つ速度 = 1/(curve*centrifugal)。
+  // EASY でも最高速だとわずかに膨らむ強さにして、全開のまま曲がり切れないようにする
+  CURVE:{ NONE:0, EASY:3, MEDIUM:5, HARD:7 },
   HILL: { NONE:0, LOW:20, MEDIUM:40, HIGH:60 }
 };
 
@@ -252,94 +254,152 @@ function addSCurves(){
   addRoad(ROAD.LEN.MEDIUM,ROAD.LEN.MEDIUM,ROAD.LEN.MEDIUM,-ROAD.CURVE.MEDIUM,-ROAD.HILL.MEDIUM);
 }
 
-// ---- コース定義（5種）------------------------------------------------
+// ---- コース定義（6種）------------------------------------------------
+// theme: 'nature' = 空と山と草地 / 'city' = 夜の街とビル群
 const L = ROAD.LEN, C = ROAD.CURVE, HL = ROAD.HILL;
 const COURSES = [
   {
-    id:'beginner', name:'BEGINNER', desc:'EASY / FLAT', laps:3, rivals:6, timeStart:80, timeBonus:40,
+    id:'beginner', name:'BEGINNER', desc:'EASY / FLAT', theme:'nature',
+    laps:3, rivals:6, timeStart:85, timeBonus:42,
     build(){
-      addStraight(L.LONG);
+      addStraight(L.MEDIUM);
       addCurve(L.MEDIUM,  C.EASY,   HL.NONE);
-      addStraight(L.MEDIUM);
+      addStraight(L.SHORT);
       addCurve(L.MEDIUM, -C.EASY,   HL.NONE);
-      addStraight(L.LONG);
+      addCurve(L.SHORT,   C.MEDIUM, HL.LOW);
+      addStraight(L.SHORT);
       addCurve(L.LONG,    C.MEDIUM, HL.LOW);
+      addCurve(L.SHORT,  -C.EASY,   HL.NONE);
+      addStraight(L.SHORT);
+      addCurve(L.MEDIUM, -C.MEDIUM,-HL.LOW);
+      addCurve(L.SHORT,   C.EASY,   HL.NONE);
       addStraight(L.MEDIUM);
-      addCurve(L.MEDIUM, -C.EASY,  -HL.LOW);
-      addStraight(L.LONG);
       addCurve(L.MEDIUM, -C.MEDIUM, HL.NONE);
-      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.EASY,   HL.LOW);
+      addStraight(L.SHORT);
     }
   },
   {
-    id:'seaside', name:'SEASIDE', desc:'S-CURVES', laps:3, rivals:8, timeStart:75, timeBonus:35,
+    id:'seaside', name:'SEASIDE', desc:'S-CURVES', theme:'nature',
+    laps:3, rivals:8, timeStart:80, timeBonus:38,
     build(){
-      addStraight(L.MEDIUM);
-      addSCurves();
       addStraight(L.SHORT);
+      addSCurves();
+      addCurve(L.SHORT,  -C.MEDIUM, HL.NONE);
       addCurve(L.MEDIUM,  C.MEDIUM, HL.LOW);
       addSCurves();
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
       addCurve(L.MEDIUM, -C.MEDIUM,-HL.LOW);
-      addStraight(L.MEDIUM);
+      addStraight(L.SHORT);
       addSCurves();
+      addCurve(L.SHORT,  -C.HARD,   HL.NONE);
       addStraight(L.SHORT);
     }
   },
   {
-    id:'mountain', name:'MOUNTAIN', desc:'HILLY', laps:3, rivals:8, timeStart:80, timeBonus:38,
+    id:'mountain', name:'MOUNTAIN', desc:'HILLY', theme:'nature',
+    laps:3, rivals:8, timeStart:85, timeBonus:40,
     build(){
       addStraight(L.SHORT);
-      addHill(L.MEDIUM,   HL.MEDIUM);
-      addCurve(L.MEDIUM,  C.MEDIUM, HL.HIGH);
-      addHill(L.MEDIUM,  -HL.MEDIUM);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.MEDIUM);
+      addCurve(L.SHORT,  -C.HARD,   HL.HIGH);
+      addHill(L.SHORT,   -HL.MEDIUM);
       addCurve(L.LONG,   -C.MEDIUM, HL.MEDIUM);
-      addHill(L.MEDIUM,  -HL.HIGH);
-      addStraight(L.MEDIUM);
-      addCurve(L.MEDIUM,  C.EASY,   HL.MEDIUM);
-      addHill(L.LONG,    -HL.MEDIUM);
-      addCurve(L.MEDIUM, -C.EASY,   HL.LOW);
+      addCurve(L.SHORT,   C.HARD,  -HL.HIGH);
+      addStraight(L.SHORT);
+      addCurve(L.MEDIUM,  C.MEDIUM, HL.MEDIUM);
+      addCurve(L.SHORT,  -C.MEDIUM,-HL.LOW);
+      addHill(L.MEDIUM,  -HL.MEDIUM);
+      addCurve(L.MEDIUM, -C.HARD,   HL.LOW);
+      addCurve(L.SHORT,   C.MEDIUM, HL.NONE);
       addStraight(L.SHORT);
     }
   },
   {
-    id:'technical', name:'TECHNICAL', desc:'TIGHT TURNS', laps:3, rivals:9, timeStart:78, timeBonus:36,
+    id:'technical', name:'TECHNICAL', desc:'TIGHT TURNS', theme:'nature',
+    laps:3, rivals:9, timeStart:82, timeBonus:38,
     build(){
       addStraight(L.SHORT);
       addCurve(L.SHORT,   C.HARD,   HL.NONE);
       addCurve(L.SHORT,  -C.HARD,   HL.LOW);
-      addStraight(L.SHORT);
+      addCurve(L.SHORT,   C.MEDIUM, HL.NONE);
       addCurve(L.SHORT,  -C.HARD,   HL.NONE);
       addCurve(L.SHORT,   C.HARD,  -HL.LOW);
       addCurve(L.MEDIUM,  C.MEDIUM, HL.NONE);
       addCurve(L.SHORT,  -C.HARD,   HL.LOW);
-      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addStraight(L.SHORT);
       addCurve(L.SHORT,   C.HARD,   HL.NONE);
       addCurve(L.SHORT,  -C.MEDIUM,-HL.LOW);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
       addCurve(L.MEDIUM, -C.HARD,   HL.NONE);
       addStraight(L.SHORT);
     }
   },
   {
-    id:'grandprix', name:'GRAND PRIX', desc:'LONG / HARD', laps:3, rivals:9, timeStart:95, timeBonus:45,
+    id:'city', name:'CITY', desc:'NIGHT / URBAN', theme:'city',
+    laps:3, rivals:9, timeStart:85, timeBonus:40,
+    build(){
+      // 街区を思わせる、直線と直角気味のコーナーの組み合わせ
+      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addStraight(L.SHORT);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addCurve(L.SHORT,  -C.MEDIUM, HL.LOW);
+      addStraight(L.SHORT);
+      addCurve(L.SHORT,  -C.HARD,   HL.NONE);
+      addCurve(L.MEDIUM,  C.MEDIUM,-HL.LOW);
+      addStraight(L.SHORT);
+      addCurve(L.SHORT,  -C.HARD,   HL.NONE);
+      addCurve(L.SHORT,   C.MEDIUM, HL.NONE);
+      addSCurves();
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addStraight(L.MEDIUM);
+      addCurve(L.MEDIUM, -C.MEDIUM, HL.NONE);
+      addStraight(L.SHORT);
+    }
+  },
+  {
+    id:'grandprix', name:'GRAND PRIX', desc:'LONG / HARD', theme:'nature',
+    laps:3, rivals:9, timeStart:100, timeBonus:48,
     build(){
       addStraight(L.SHORT);
       addHill(L.SHORT, HL.LOW);
       addCurve(L.MEDIUM,  C.MEDIUM, HL.LOW);
-      addStraight(L.SHORT);
+      addCurve(L.SHORT,  -C.HARD,   HL.NONE);
       addSCurves();
       addCurve(L.LONG,   -C.MEDIUM, HL.MEDIUM);
-      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.HARD,   HL.NONE);
+      addStraight(L.SHORT);
       addCurve(L.LONG,    C.HARD,  -HL.LOW);
       addSCurves();
-      addHill(L.MEDIUM,  -HL.MEDIUM);
+      addCurve(L.SHORT,  -C.MEDIUM, HL.NONE);
+      addHill(L.SHORT,   -HL.MEDIUM);
       addCurve(L.MEDIUM, -C.HARD,   HL.NONE);
-      addStraight(L.MEDIUM);
+      addCurve(L.SHORT,   C.MEDIUM, HL.LOW);
+      addStraight(L.SHORT);
       addCurve(L.MEDIUM,  C.EASY,   HL.LOW);
+      addCurve(L.SHORT,  -C.MEDIUM, HL.NONE);
       addStraight(L.SHORT);
     }
   }
 ];
 function course(){ return COURSES[courseIndex] || COURSES[0]; }
+
+// ---- 風景テーマ ------------------------------------------------------
+const THEMES = {
+  nature: {
+    sky1:'#4a86e8', sky2:'#5c94fc', fog:'#5c94fc',
+    grassLight:'#3aa63a', grassDark:'#2e8c2e',
+    sun:'#fff7c0', scenery:'mountain', sceneryColor:'#2c6b3a'
+  },
+  city: {
+    sky1:'#0e1230', sky2:'#33305e', fog:'#33305e',
+    grassLight:'#5c5c68', grassDark:'#4e4e5a',   // 路肩は舗装・コンクリート
+    sun:'#ffe9b0', scenery:'city', sceneryColor:'#171b38'
+  }
+};
+function theme(){ return THEMES[course().theme] || THEMES.nature; }
 
 function buildTrack(){
   segments = [];
@@ -548,31 +608,65 @@ const audio = {
     n.connect(this.ctx.destination);
     return n;
   },
-  // プレイヤーごとに独立したエンジン音を作る
+  // タイヤのスリップ音に使うホワイトノイズ（1秒ぶんを使い回す）
+  noiseBuffer(){
+    if(this._noise && this._noiseCtx===this.ctx) return this._noise;
+    const sr = this.ctx.sampleRate, len = Math.floor(sr);
+    const b = this.ctx.createBuffer(1, len, sr);
+    const d = b.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    this._noise = b; this._noiseCtx = this.ctx;
+    return b;
+  },
+  // プレイヤーごとに独立したエンジン音＋スリップ音を作る
   startEngine(){
     if(!this.ctx || this.muted || this.engines.length) return;
     for(const p of players){
       const pan = panOf(p);
+      const dest = this.out(pan);
+      // エンジン音
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
       o.type='sawtooth'; o.frequency.value=60;
       g.gain.value=0.0;
-      o.connect(g); g.connect(this.out(pan)); o.start();
-      this.engines.push({osc:o, gain:g, player:p, pan});
+      o.connect(g); g.connect(dest); o.start();
+      // スリップ音（ノイズ→バンドパス→ゲイン）。常時鳴らして音量で出し入れする
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer(); src.loop = true;
+      const flt = this.ctx.createBiquadFilter();
+      flt.type='bandpass'; flt.frequency.value=1400; flt.Q.value=0.9;
+      const sg = this.ctx.createGain();
+      sg.gain.value = 0.0;
+      src.connect(flt); flt.connect(sg); sg.connect(dest); src.start();
+      this.engines.push({osc:o, gain:g, player:p, pan, skid:{src, gain:sg, filter:flt}});
     }
   },
   stopEngine(){
-    for(const e of this.engines){ try{ e.osc.stop(); }catch(err){} }
+    for(const e of this.engines){
+      try{ e.osc.stop(); }catch(err){}
+      if(e.skid){ try{ e.skid.src.stop(); }catch(err){} }   // ループ音も必ず止める
+    }
     this.engines.length = 0;
   },
   update(){
     if(!this.ctx) return;
+    const t = this.ctx.currentTime;
     for(const e of this.engines){
       const p = e.player;
-      const sp = (state==='countdown') ? 0 : p.speed;   // カウントダウン中はアイドリング
+      const racing = (state==='race');
+      const sp = racing ? p.speed : 0;                 // カウントダウン中はアイドリング
       const r = sp/maxSpeed;
-      e.osc.frequency.setTargetAtTime(55 + r*230 + (p.gearHigh?40:0), this.ctx.currentTime, 0.05);
-      e.gain.gain.setTargetAtTime(this.muted?0:(0.02+r*0.05), this.ctx.currentTime, 0.1);
+      e.osc.frequency.setTargetAtTime(55 + r*230 + (p.gearHigh?40:0), t, 0.05);
+      e.gain.gain.setTargetAtTime(this.muted?0:(0.02+r*0.05), t, 0.1);
+
+      if(e.skid){
+        // ブレーキ中、または路外走行中にタイヤが滑る音を出す（速いほど大きく）
+        const offRoad = (p.playerX < -1 || p.playerX > 1);
+        const slipping = racing && r > 0.06 && (p.keys.down || offRoad);
+        const vol = this.muted || !slipping ? 0 : (0.03 + r*0.10);
+        e.skid.gain.gain.setTargetAtTime(vol, t, slipping ? 0.02 : 0.08);
+        e.skid.filter.frequency.setTargetAtTime(900 + r*1500, t, 0.08);
+      }
     }
   }
 };
@@ -878,20 +972,21 @@ function fogFactor(distance, density){
 
 // 背景（空・山・地平）
 function renderBackground(playerY, skyOffset){
+  const T = theme();
   const hy = Math.round(H*0.52 + playerY/8000*H); // 地平線
   // 空
   const g = ctx.createLinearGradient(0,0,0,hy);
-  g.addColorStop(0, COL.sky1); g.addColorStop(1, COL.sky2);
+  g.addColorStop(0, T.sky1); g.addColorStop(1, T.sky2);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,hy);
-  // 太陽
-  ctx.fillStyle='#fff7c0';
+  // 太陽（街コースでは月）
+  ctx.fillStyle=T.sun;
   ctx.beginPath(); ctx.arc(W*0.78, hy-46, 18, 0, Math.PI*2); ctx.fill();
-  // 遠景の山（パララックス）
+  // 遠景（パララックス）
   const off = ((skyOffset*40)%W + W)%W;
-  ctx.fillStyle = COL.mountain;
-  drawMountains(hy, off);
-  // 手前の地面（下半分）— 道路が覆わない部分の緑
-  ctx.fillStyle = COL.grassDark;
+  ctx.fillStyle = T.sceneryColor;
+  if(T.scenery==='city') drawCity(hy, off); else drawMountains(hy, off);
+  // 手前の地面（下半分）— 道路が覆わない部分
+  ctx.fillStyle = T.grassDark;
   ctx.fillRect(0, hy, W, H-hy);
 }
 function drawMountains(hy, off){
@@ -904,6 +999,34 @@ function drawMountains(hy, off){
     ctx.closePath(); ctx.fill();
   }
 }
+// 夜の街のビル群（[左端, 幅, 高さ] の固定パターンを繰り返す）
+const BUILDINGS = [
+  [0,26,44],[28,18,66],[48,30,34],[80,22,54],[104,16,78],[122,28,40],
+  [152,20,60],[174,32,30],[208,18,70],[228,26,48],[256,20,36],[278,30,58],[310,14,42]
+];
+const WIN_COL = '#f2d88a';
+function drawCity(hy, off){
+  const w = W, body = ctx.fillStyle;
+  for(let base=-w; base<=w; base+=w){
+    for(const [x, bw, bh] of BUILDINGS){
+      const bx = Math.round(base - off + x);
+      if(bx > W || bx + bw < 0) continue;               // 画面外は描かない
+      ctx.fillStyle = body;
+      ctx.fillRect(bx, hy-bh, bw, bh);
+      // 窓（一定パターンで点灯／消灯させる）
+      for(let wy = hy-bh+4; wy < hy-3; wy += 7){
+        for(let wx = bx+3; wx < bx+bw-3; wx += 6){
+          // 位置から決まる擬似ランダムで点灯を決める（毎フレーム変わらない）
+          const lit = ((wx*7 + wy*13 + x*3) % 10) < 6;
+          if(!lit) continue;
+          ctx.fillStyle = WIN_COL;
+          ctx.fillRect(wx, wy, 3, 4);
+        }
+      }
+    }
+  }
+  ctx.fillStyle = body;
+}
 
 // 台形塗り
 function polygon(x1,y1,x2,y2,x3,y3,x4,y4,color){
@@ -915,7 +1038,7 @@ function polygon(x1,y1,x2,y2,x3,y3,x4,y4,color){
 function fogRect(x,y,w,h,fog){
   if(fog>=1) return;
   ctx.globalAlpha = 1-fog;
-  ctx.fillStyle = COL.fog;
+  ctx.fillStyle = theme().fog;
   ctx.fillRect(x,y,w,h);
   ctx.globalAlpha = 1;
 }
@@ -923,7 +1046,8 @@ function fogRect(x,y,w,h,fog){
 function renderSegment(seg){
   const p1=seg.p1.screen, p2=seg.p2.screen;
   const dark = seg.color==='dark';
-  const grass  = dark ? COL.grassDark : COL.grassLight;
+  const T = theme();
+  const grass  = dark ? T.grassDark : T.grassLight;
   const road   = dark ? COL.roadDark  : COL.roadLight;
   const rumble = dark ? COL.rumbleLight : COL.rumbleWhite;
 
@@ -1201,7 +1325,7 @@ function renderTitle(){
 
   // 人数選択メニュー
   const items = [
-    {label:'1 PLAYER',  sub:'TIME ATTACK / 5 COURSES'},
+    {label:'1 PLAYER',  sub:'TIME ATTACK / 6 COURSES'},
     {label:'2 PLAYERS', sub:'VS  SPLIT SCREEN'}
   ];
   for(let i=0;i<items.length;i++){
@@ -1232,7 +1356,7 @@ function renderSelect(){
   pxText(mode===2?'2 PLAYERS':'1 PLAYER', cx, 46, 9, mode===2?'#8fe0ff':'#9fb0c8', 'center');
 
   const bests = loadBests();
-  const top = 62, rowH = 29;
+  const top = 60, rowH = 26;
   for(let i=0;i<COURSES.length;i++){
     const c = COURSES[i], y = top + i*rowH, sel = (i===selIndex);
     if(sel){
