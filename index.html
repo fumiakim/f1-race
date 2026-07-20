@@ -534,7 +534,8 @@ function panOf(p){ return (mode===2 && p) ? (p.id===1 ? -1 : 1) : 0; }
 const audio = {
   ctx:null, muted:false, engines:[],
   ensure(){
-    if(this.ctx) return;
+    // 一度 close した AudioContext は再利用できないので作り直す
+    if(this.ctx && this.ctx.state !== 'closed') return;
     try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ this.ctx=null; }
   },
   // 出力先ノードを返す（pan: -1=左 / 0=中央 / +1=右）
@@ -1377,12 +1378,47 @@ function precomputeCourseMaps(){
 precomputeCourseMaps();   // タイトル背景用のトラックもここで構築される
 requestAnimationFrame(frame);
 
-// タブ復帰時にタイマー基準をリセット（大きなdtスパイク防止）
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) last = performance.now(); });
+// ============================================================
+//  ページのライフサイクルに合わせた音の停止
+//  （タブ/ブラウザを閉じた後もエンジン音が鳴り続けるのを防ぐ）
+// ============================================================
+function shutdownAudio(keepAlive){
+  audio.stopEngine();                       // まず発音を止める
+  if(!audio.ctx) return;
+  if(keepAlive){
+    // bfcache に入る場合は復帰できるよう suspend にとどめる
+    try{ audio.ctx.suspend(); }catch(e){}
+  }else{
+    try{ audio.ctx.close(); }catch(e){}     // 完全に破棄
+    audio.ctx = null;
+  }
+}
+// pagehide はタブを閉じた時・遷移時の両方で発火する（unload より確実）
+addEventListener('pagehide', e=>shutdownAudio(e.persisted));
+addEventListener('beforeunload', ()=>shutdownAudio(false));
 
+// bfcache から復帰したらレース中の音を戻す
+addEventListener('pageshow', e=>{
+  if(!e.persisted) return;
+  last = performance.now();
+  if(audio.muted || (state!=='race' && state!=='countdown')) return;
+  audio.ensure();
+  if(audio.ctx && audio.ctx.state==='suspended'){ try{ audio.ctx.resume(); }catch(err){} }
+  audio.startEngine();
+});
 
-
-
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    // タブが隠れると rAF が止まり audio.update() も呼ばれなくなるため、
+    // エンジン音が最後の音量のまま鳴り続けてしまう。音ごと止める。
+    if(audio.ctx && audio.ctx.state==='running'){ try{ audio.ctx.suspend(); }catch(e){} }
+  }else{
+    last = performance.now();               // 復帰時のdtスパイク防止
+    if(!audio.muted && audio.ctx && audio.ctx.state==='suspended'){
+      try{ audio.ctx.resume(); }catch(e){}
+    }
+  }
+});
 
 })();
 </script>
