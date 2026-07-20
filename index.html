@@ -1002,8 +1002,8 @@ function drawMountains(hy, off){
 // 夜の街のビル群（[左端, 幅, 高さ] の固定パターンを繰り返す）
 const BUILDINGS = [
   [0,26,44],[28,18,66],[48,30,34],[80,22,54],[104,16,78],[122,28,40],
-  [152,20,60],[174,32,30],[208,18,70],[228,26,48],[256,20,36],[278,30,58],[310,14,42]
-];
+  [152,20,60],[174,32,30],[208,18,70],[228,26,48],[256,20,36],[278,30,58],[306,14,42]
+];  // 右端は 306+14=320 に収める。W(320)を超えると繰り返しの継ぎ目でビルが重なる
 const WIN_COL = '#f2d88a';
 function drawCity(hy, off){
   const w = W, body = ctx.fillStyle;
@@ -1013,13 +1013,14 @@ function drawCity(hy, off){
       if(bx > W || bx + bw < 0) continue;               // 画面外は描かない
       ctx.fillStyle = body;
       ctx.fillRect(bx, hy-bh, bw, bh);
-      // 窓（一定パターンで点灯／消灯させる）
-      for(let wy = hy-bh+4; wy < hy-3; wy += 7){
-        for(let wx = bx+3; wx < bx+bw-3; wx += 6){
-          // 位置から決まる擬似ランダムで点灯を決める（毎フレーム変わらない）
-          const lit = ((wx*7 + wy*13 + x*3) % 10) < 6;
-          if(!lit) continue;
-          ctx.fillStyle = WIN_COL;
+      // 窓の点灯パターンは「ビル内の行・列番号」と「ビル固有のx」だけで決める。
+      // 画面座標に依存させるとスクロールのたびに点灯が切り替わってちらつくため。
+      ctx.fillStyle = WIN_COL;
+      let row = 0;
+      for(let wy = hy-bh+4; wy < hy-3; wy += 7, row++){
+        let col = 0;
+        for(let wx = bx+3; wx < bx+bw-3; wx += 6, col++){
+          if(((col*7 + row*13 + x*3) % 10) >= 6) continue;   // 消灯
           ctx.fillRect(wx, wy, 3, 4);
         }
       }
