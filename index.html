@@ -138,8 +138,9 @@ const offDecel    = -maxSpeed / 2.6;
 const offLimit    = maxSpeed / 4;
 const centrifugal = 0.32;
 
-const CAR_WORLD_W = 432;                    // 車の見かけ幅(world)。当たり判定もこれに比例
+const CAR_WORLD_W = 720;                    // ライバル車の見かけ幅(world)
 const PLAYER_CAR_W= 0.163;                  // 自車の描画幅（画面幅に対する比）
+const SELF_WORLD_W= 432;                    // 自車の当たり判定上の幅(world)。描画は上の比で小さめ
 // 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
 const HIT_RATIO   = 0.68;
 // 前後方向の判定半幅(world)。自車の「車体位置」(position + playerZ)を中心に判定する
@@ -768,11 +769,13 @@ function update(dt){
 
 // 接触処理（相手はライバル車でも対戦相手でも同じ扱い）
 // dzCar は「自車の車体」から見た相手の前後距離（+ = 前方）
-function collideWith(p, dzCar, otherX, otherSpeed, carW){
+// otherW = 相手の車幅(world)。自車幅(SELF_WORLD_W)との半幅の和で当たり幅を決める
+function collideWith(p, dzCar, otherX, otherSpeed, otherW){
   if(p.hitTimer > 0) return;
   if(Math.abs(dzCar) >= HIT_Z_HALF) return;
-  // 判定は見た目の車幅(=carW)よりやや狭くして、かすった程度では当たらないようにする
-  if(Math.abs(p.playerX - otherX) >= carW * HIT_RATIO) return;
+  // 接触幅 = (自車半幅 + 相手半幅)。HIT_RATIO<1 で少し重なるまで当たらない
+  const hitW = (SELF_WORLD_W + otherW) / (2*roadWidth) * HIT_RATIO;
+  if(Math.abs(p.playerX - otherX) >= hitW) return;
   // 接触 → 火花＋著しく速度低下
   p.speed = Math.min(p.speed*0.18, otherSpeed*0.45);
   p.playerX += (p.playerX>=otherX?1:-1) * 0.16;
@@ -831,7 +834,6 @@ function updatePlayer(p, dt){
 
   // ライバルとの当たり判定 + 追い越しカウント
   p.hitTimer = Math.max(0, p.hitTimer - dt);
-  const carW = CAR_WORLD_W/roadWidth;
   const half = trackLength/2;
   for(let i=0;i<rivals.length;i++){
     const r = rivals[i];
@@ -847,7 +849,7 @@ function updatePlayer(p, dt){
       p.passed++; sfx.blip(880,0.05,'square',panOf(p));
     }
     p.prevDz[i] = dzCar;
-    collideWith(p, dzCar, r.offset, r.speed, carW);
+    collideWith(p, dzCar, r.offset, r.speed, CAR_WORLD_W);   // ライバル幅
   }
 
   // 対戦相手との接触（2人対戦）
@@ -856,7 +858,7 @@ function updatePlayer(p, dt){
     for(const o of players){
       if(o===p) continue;
       const dzCar = ((o.position - p.position + half) % trackLength + trackLength) % trackLength - half;
-      collideWith(p, dzCar, o.playerX, o.speed, carW);
+      collideWith(p, dzCar, o.playerX, o.speed, SELF_WORLD_W);   // 相手も自機サイズ
     }
   }
 
