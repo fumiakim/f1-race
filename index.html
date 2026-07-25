@@ -138,8 +138,8 @@ const offDecel    = -maxSpeed / 2.6;
 const offLimit    = maxSpeed / 4;
 const centrifugal = 0.32;
 
-const CAR_WORLD_W = 720;                    // 車の見かけ幅(world)
-const PLAYER_CAR_W= 0.272;                  // 自車の描画幅（画面幅に対する比）
+const CAR_WORLD_W = 432;                    // 車の見かけ幅(world)。当たり判定もこれに比例
+const PLAYER_CAR_W= 0.163;                  // 自車の描画幅（画面幅に対する比）
 // 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
 const HIT_RATIO   = 0.68;
 // 前後方向の判定半幅(world)。自車の「車体位置」(position + playerZ)を中心に判定する
@@ -1121,16 +1121,61 @@ function drawF1(cx, baseY, w, color, tilt){
     const sc = 1/(1 + Math.max(0,along)*PERSP);
     return { x: across*KX*sc, y: -(along*KY + g*KH)*sc };
   }
+  const quad=(a,b,c,d,col)=>{ ctx.fillStyle=col; ctx.beginPath();
+    ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath(); ctx.fill(); };
+  const lerp=(a,b,t)=>({x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t});
+
   // 箱：背面(v0側)・上面(g1側)・露出側面(旋回の反対側)を描く
   function box(u0,u1,v0,v1,g0,g1, faceC, sideC, topC){
     const RBL=P(u0,v0,g0), RBR=P(u1,v0,g0), RTL=P(u0,v0,g1), RTR=P(u1,v0,g1);
     const FTL=P(u0,v1,g1), FTR=P(u1,v1,g1), FBL=P(u0,v1,g0), FBR=P(u1,v1,g0);
-    const quad=(a,b,c,d,col)=>{ ctx.fillStyle=col; ctx.beginPath();
-      ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath(); ctx.fill(); };
     if(sinf >  0.01) quad(RBL,FBL,FTL,RTL, sideC);   // 右旋回 → 左側面が見える
     else if(sinf < -0.01) quad(RBR,FBR,FTR,RTR, sideC); // 左旋回 → 右側面が見える
     quad(RTL,RTR,FTR,FTL, topC);                     // 上面（＝主に見える車体上面）
     quad(RBL,RBR,RTR,RTL, faceC);                    // 背面（最も手前）
+  }
+
+  // 3Dの車輪（円柱）。uc=横中心, hw=タイヤ半幅, v0..v1=前後(接地円の直径方向), gTop=タイヤ外径(接地=0)
+  function wheel(uc, hw, v0, v1, gTop){
+    const u0=uc-hw, u1=uc+hw;
+    const RBL=P(u0,v0,0),   RBR=P(u1,v0,0),   RTL=P(u0,v0,gTop),   RTR=P(u1,v0,gTop);
+    const FBL=P(u0,v1,0),   FBR=P(u1,v1,0),   FTL=P(u0,v1,gTop),   FTR=P(u1,v1,gTop);
+    const treadDark='#0d0d0d', treadHi='#2c2c2c', cap='#222226';
+    // 露出側面（旋回した側）にホイールの円形ハブを描く＝立体的に見える
+    let side=null;
+    if(sinf > 0.02) side=[RBL,FBL,FTL,RTL];        // 右旋回→左側面
+    else if(sinf < -0.02) side=[RBR,FBR,FTR,RTR];  // 左旋回→右側面
+    if(side){
+      const [b0,b1,t1,t0]=side;
+      const cxw=(b0.x+b1.x+t1.x+t0.x)/4, cyw=(b0.y+b1.y+t1.y+t0.y)/4;
+      const rw=Math.hypot(b1.x-b0.x,b1.y-b0.y)/2;  // タイヤ幅方向の半径
+      const rh=Math.hypot(t0.x-b0.x,t0.y-b0.y)/2;  // タイヤ径方向の半径
+      const ang=Math.atan2((t0.y-b0.y),(t0.x-b0.x))-Math.PI/2;
+      ctx.fillStyle='#141414';                                   // タイヤ側面(黒)
+      ctx.beginPath(); ctx.ellipse(cxw,cyw,rw,rh,ang,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#8f96a2';                                   // ホイール(金属リム)
+      ctx.beginPath(); ctx.ellipse(cxw,cyw,rw*0.52,rh*0.52,ang,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#3a3d44';                                   // ハブ
+      ctx.beginPath(); ctx.ellipse(cxw,cyw,rw*0.2,rh*0.2,ang,0,Math.PI*2); ctx.fill();
+    }
+    // 上面キャップ
+    quad(RTL,RTR,FTR,FTL, cap);
+    // 背面トレッド（上端を丸めてタイヤらしく）
+    ctx.fillStyle=treadDark;
+    ctx.beginPath();
+    ctx.moveTo(RBL.x,RBL.y); ctx.lineTo(RBR.x,RBR.y);
+    const rUp=lerp(RBR,RTR,0.72), lUp=lerp(RBL,RTL,0.72), topMid=lerp(RTL,RTR,0.5);
+    ctx.lineTo(rUp.x,rUp.y);
+    ctx.quadraticCurveTo(RTR.x,RTR.y, topMid.x,topMid.y);        // 右上を丸める
+    ctx.quadraticCurveTo(RTL.x,RTL.y, lUp.x,lUp.y);              // 左上を丸める
+    ctx.closePath(); ctx.fill();
+    // トレッド上部の照り
+    const treadH = Math.hypot(RTL.x-RBL.x, RTL.y-RBL.y);   // タイヤの画面上の高さ
+    ctx.strokeStyle=treadHi; ctx.lineWidth=Math.max(1, treadH*0.12);
+    ctx.beginPath();
+    ctx.moveTo(lerp(lUp,RTL,0.3).x, lerp(lUp,RTL,0.3).y);
+    ctx.quadraticCurveTo(topMid.x, topMid.y, lerp(rUp,RTR,0.3).x, lerp(rUp,RTR,0.3).y);
+    ctx.stroke();
   }
 
   // 影（接地点）
@@ -1145,12 +1190,14 @@ function drawF1(cx, baseY, w, color, tilt){
 
   const bodyTop = color, bodyBack = shade(color,0.82), bodySide = shade(color,0.5);
   // 奥（前方=高v）から手前（後方=低v）へ描く
+  wheel(-0.34, 0.085, 0.86,1.16, 0.26);                               // 左フロントタイヤ
+  wheel( 0.34, 0.085, 0.86,1.16, 0.26);                               // 右フロントタイヤ
   box(-0.12,0.12, 0.90,1.14, 0.10,0.30, bodyBack, bodySide, bodyTop);  // ノーズ
   box(-0.22,0.22, 0.05,0.90, 0.06,0.42, bodyBack, bodySide, bodyTop);  // ボディ
   box(-0.09,0.09, 0.42,0.66, 0.42,0.54, '#12121c', '#0a0a12', '#1c1c28'); // コックピット
   box(-0.05,0.05, 0.50,0.62, 0.54,0.64, '#c8c8d4', '#9a9aa6', '#ffffff'); // ヘルメット
-  box(-0.52,-0.28, 0.02,0.54, 0.0,0.34, '#141414', '#0a0a0a', '#242424'); // 左リアタイヤ
-  box( 0.28, 0.52, 0.02,0.54, 0.0,0.34, '#141414', '#0a0a0a', '#242424'); // 右リアタイヤ
+  wheel(-0.40, 0.12, 0.02,0.54, 0.34);                               // 左リアタイヤ
+  wheel( 0.40, 0.12, 0.02,0.54, 0.34);                               // 右リアタイヤ
   box(-0.50,0.50, -0.10,0.00, 0.50,0.62, '#1c1c24', '#101016', '#2a2a34'); // リアウイング
   box(-0.50,-0.44, -0.10,0.06, 0.34,0.62, '#16161c', '#0d0d12', '#22222c'); // 左翼端板
   box( 0.44,0.50, -0.10,0.06, 0.34,0.62, '#16161c', '#0d0d12', '#22222c'); // 右翼端板
