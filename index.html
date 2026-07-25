@@ -810,7 +810,13 @@ function updatePlayer(p, dt){
 
   // 加減速
   const gearMax = p.gearHigh ? gearHighMax : gearLowMax;
-  const gearAcc = p.gearHigh ? accelHigh   : accelLow;
+  let gearAcc   = p.gearHigh ? accelHigh   : accelLow;
+  // 実車と同様、高いギアは低速だとトルクが細く加速できない（＝LOWから発進する必要がある）。
+  // HIGHの加速力を速度に応じて絞り、LOWの守備範囲(≒gearLowMax)に近づくほど本来の力になる。
+  if(p.gearHigh){
+    const lug = U.limit(p.speed / (gearLowMax*0.85), 0.12, 1);
+    gearAcc *= lug;
+  }
   if(p.keys.up)        p.speed = U.accelerate(p.speed, gearAcc, dt);
   else if(p.keys.down) p.speed = U.accelerate(p.speed, braking, dt);
   else                 p.speed = U.accelerate(p.speed, decel,   dt);
@@ -1089,56 +1095,65 @@ function renderSegment(seg){
 }
 
 // F1マシン（後方視点）を procedural 描画
-// F1マシン（後方視点）。tilt=-1..1 でカーブ方向へ車体全体が向きを変える。
-function drawF1(cx, baseY, w, color, tilt){
-  const h = w*0.9;
-  tilt = U.limit(tilt||0, -1, 1);
+// 16進色を明度 f 倍した rgb 文字列にする（側面/上面の陰影用）
+function shade(hex, f){
+  const n = parseInt(hex.slice(1),16);
+  const r = Math.min(255, ((n>>16)&255)*f)|0;
+  const g = Math.min(255, ((n>>8)&255)*f)|0;
+  const b = Math.min(255, (n&255)*f)|0;
+  return 'rgb('+r+','+g+','+b+')';
+}
 
-  // 影は地面に置く（車体の向きに合わせて少しだけ横に伸ばす）
-  ctx.save();
-  ctx.translate(cx, baseY);
+// F1マシン（後方視点）。
+// カーブでは水平にはほとんど傾けず、車体をヨー(機首の向き)で回して側面を遠近法で見せる。
+// 車を u:幅 / v:前後 / g:高さ の箱の集合とみなし、簡易投影で背面・上面・露出側面を描く。
+function drawF1(cx, baseY, w, color, tilt){
+  tilt = U.limit(tilt||0, -1, 1);
+  const yaw  = tilt * 0.55;                 // ヨー角相当（旋回で機首が振れる量）
+  const bank = tilt * 0.05;                 // 水平に対する傾きはごくわずか
+  const sinf = Math.sin(yaw), cosf = Math.cos(yaw);
+  const KX = w, KY = w*0.42, KH = w*0.95, PERSP = 0.30;
+
+  // (u:-0.5..0.5=幅, v:0=リア〜前, g:0=接地〜上) → 接地点基準のスクリーン座標
+  function P(u,v,g){
+    const across = u*cosf + v*sinf;         // 画面横方向
+    const along  = -u*sinf + v*cosf;        // カメラからの奥行き（0..）
+    const sc = 1/(1 + Math.max(0,along)*PERSP);
+    return { x: across*KX*sc, y: -(along*KY + g*KH)*sc };
+  }
+  // 箱：背面(v0側)・上面(g1側)・露出側面(旋回の反対側)を描く
+  function box(u0,u1,v0,v1,g0,g1, faceC, sideC, topC){
+    const RBL=P(u0,v0,g0), RBR=P(u1,v0,g0), RTL=P(u0,v0,g1), RTR=P(u1,v0,g1);
+    const FTL=P(u0,v1,g1), FTR=P(u1,v1,g1), FBL=P(u0,v1,g0), FBR=P(u1,v1,g0);
+    const quad=(a,b,c,d,col)=>{ ctx.fillStyle=col; ctx.beginPath();
+      ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.lineTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.closePath(); ctx.fill(); };
+    if(sinf >  0.01) quad(RBL,FBL,FTL,RTL, sideC);   // 右旋回 → 左側面が見える
+    else if(sinf < -0.01) quad(RBR,FBR,FTR,RTR, sideC); // 左旋回 → 右側面が見える
+    quad(RTL,RTR,FTR,FTL, topC);                     // 上面（＝主に見える車体上面）
+    quad(RBL,RBR,RTR,RTL, faceC);                    // 背面（最も手前）
+  }
+
+  // 影（接地点）
+  ctx.save(); ctx.translate(cx, baseY);
   ctx.fillStyle='rgba(0,0,0,0.28)';
-  ctx.beginPath(); ctx.ellipse(tilt*w*0.06, 0, w*0.6, h*0.10, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0,0,w*0.55,w*0.09,0,0,Math.PI*2); ctx.fill();
   ctx.restore();
 
-  // 車体はヨー（機首の向き）に合わせて一体で傾ける。
-  // 接地点(基準原点)を軸に回転させ、タイヤ・ボディ・ウイングが揃って動くようにする。
   ctx.save();
   ctx.translate(cx, baseY);
-  ctx.rotate(tilt * 0.22);                 // カーブ方向へ最大 ~12.6度
-  // ヨーで奥側/手前側のタイヤの見え幅が変わる（旋回で車体が斜めを向く効果）
-  const yaw = tilt * 0.5;                  // -0.5..0.5
-  const tw   = w*0.24, th = h*0.42;
-  const twNear = tw*(1+Math.abs(yaw)*0.5); // 手前に来る側のタイヤは太く
-  const twFar  = tw*(1-Math.abs(yaw)*0.5); // 奥へ回り込む側は細く
-  const lw = (tilt>=0) ? twFar : twNear;   // 左タイヤ
-  const rw = (tilt>=0) ? twNear : twFar;   // 右タイヤ
+  ctx.rotate(bank);
 
-  // リアタイヤ
-  ctx.fillStyle='#111';
-  ctx.fillRect(-w*0.52,      -th, lw, th);
-  ctx.fillRect( w*0.52-rw,   -th, rw, th);
-  ctx.fillStyle='#333';
-  ctx.fillRect(-w*0.52,      -th*0.7, lw, th*0.18);
-  ctx.fillRect( w*0.52-rw,   -th*0.7, rw, th*0.18);
-  // ボディ
-  ctx.fillStyle=color;
-  ctx.fillRect(-w*0.22, -h*0.55, w*0.44, h*0.5);
-  // ノーズ側の絞り（機首はヨー方向へ寄る）
-  ctx.fillRect(-w*0.13 + yaw*w*0.10, -h*0.72, w*0.26, h*0.2);
-  // コックピット/ヘルメット
-  ctx.fillStyle='#101018';
-  ctx.fillRect(-w*0.10 + yaw*w*0.10, -h*0.66, w*0.20, h*0.14);
-  ctx.fillStyle='#e8e8f0';
-  ctx.fillRect(-w*0.06 + yaw*w*0.10, -h*0.63, w*0.12, h*0.09);
-  // リアウイング
-  ctx.fillStyle='#1c1c22';
-  ctx.fillRect(-w*0.5, -h*0.66, w*1.0, h*0.09);
-  ctx.fillRect(-w*0.5, -h*0.66, w*0.06, h*0.16);
-  ctx.fillRect( w*0.5-w*0.06, -h*0.66, w*0.06, h*0.16);
-  // ハイライト
-  ctx.fillStyle='rgba(255,255,255,0.25)';
-  ctx.fillRect(-w*0.20, -h*0.54, w*0.06, h*0.44);
+  const bodyTop = color, bodyBack = shade(color,0.82), bodySide = shade(color,0.5);
+  // 奥（前方=高v）から手前（後方=低v）へ描く
+  box(-0.12,0.12, 0.90,1.14, 0.10,0.30, bodyBack, bodySide, bodyTop);  // ノーズ
+  box(-0.22,0.22, 0.05,0.90, 0.06,0.42, bodyBack, bodySide, bodyTop);  // ボディ
+  box(-0.09,0.09, 0.42,0.66, 0.42,0.54, '#12121c', '#0a0a12', '#1c1c28'); // コックピット
+  box(-0.05,0.05, 0.50,0.62, 0.54,0.64, '#c8c8d4', '#9a9aa6', '#ffffff'); // ヘルメット
+  box(-0.52,-0.28, 0.02,0.54, 0.0,0.34, '#141414', '#0a0a0a', '#242424'); // 左リアタイヤ
+  box( 0.28, 0.52, 0.02,0.54, 0.0,0.34, '#141414', '#0a0a0a', '#242424'); // 右リアタイヤ
+  box(-0.50,0.50, -0.10,0.00, 0.50,0.62, '#1c1c24', '#101016', '#2a2a34'); // リアウイング
+  box(-0.50,-0.44, -0.10,0.06, 0.34,0.62, '#16161c', '#0d0d12', '#22222c'); // 左翼端板
+  box( 0.44,0.50, -0.10,0.06, 0.34,0.62, '#16161c', '#0d0d12', '#22222c'); // 右翼端板
   ctx.restore();
 }
 
