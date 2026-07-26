@@ -138,9 +138,9 @@ const offDecel    = -maxSpeed / 2.6;
 const offLimit    = maxSpeed / 4;
 const centrifugal = 0.32;
 
-const CAR_WORLD_W = 648;                    // ライバル車の見かけ幅(world)
-const PLAYER_CAR_W= 0.163;                  // 自車の描画幅（画面幅に対する比）
-const SELF_WORLD_W= 432;                    // 自車の当たり判定上の幅(world)。描画は上の比で小さめ
+const CAR_WORLD_W = 518;                    // ライバル車の見かけ幅(world)
+const PLAYER_CAR_W= 0.130;                  // 自車の描画幅（画面幅に対する比）
+const SELF_WORLD_W= 346;                    // 自車の当たり判定上の幅(world)。描画は上の比で小さめ
 // 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
 const HIT_RATIO   = 0.68;
 // 前後方向の判定半幅(world)。自車の「車体位置」(position + playerZ)を中心に判定する
@@ -477,7 +477,7 @@ function buildRivals(){
       offset: offset,
       z: z,
       color: colors[i%colors.length],
-      speed: maxSpeed * (0.30 + 0.10*((i*7)%5)/5),   // プレイヤーより遅い
+      speed: maxSpeed * (0.44 + 0.16*((i*7)%5)/5),   // 約132〜170km/h（プレイヤーより遅いが手応えあり）
       wob: (i*13)%628/100,
       prevDz: undefined                              // 追い越し判定用（前フレームの相対位置）
     });
@@ -755,8 +755,13 @@ function update(dt){
     return;
   }
 
-  // ライバルは全プレイヤー共通なので1回だけ進める
-  for(const r of rivals) r.z = (r.z + r.speed*dt) % trackLength;
+  // ライバルは全プレイヤー共通なので1回だけ進める。
+  // カーブでは減速する（直線は速く・コーナーは遅い）＝プレイヤーが追い越せる余地を作る。
+  for(const r of rivals){
+    const cv = Math.abs(findSegment(r.z).curve);
+    const eff = r.speed * (cv > 0.5 ? Math.max(0.5, 1 - cv*0.06) : 1);
+    r.z = (r.z + eff*dt) % trackLength;
+  }
 
   for(const p of players){
     if(!p.finished) updatePlayer(p, dt);
