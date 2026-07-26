@@ -1170,7 +1170,7 @@ function shade(hex, f){
 function drawF1(cx, baseY, w, color, tilt){
   tilt = U.limit(tilt||0, -1, 1);
   const LZ = 1.5;                                    // 全長の倍率（全幅は変えずに前後だけ伸ばす）
-  const yaw = tilt * 0.6;                            // ステアリングのヨー角
+  const yaw = tilt * 0.42;                           // ステアリングのヨー角（旋回の見た目の角度。0.6の7割）
   const cyw = Math.cos(yaw), syw = Math.sin(yaw);
   // カメラ（車の後方 camD・上方 camH から、pitch だけ見下ろす）
   const camH = 0.95, camD = 2.3, pitch = 0.36, focal = 2.6;
