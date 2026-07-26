@@ -260,7 +260,7 @@ function addSCurves(){
 const L = ROAD.LEN, C = ROAD.CURVE, HL = ROAD.HILL;
 const COURSES = [
   {
-    id:'beginner', name:'BEGINNER', desc:'EASY / FLAT', theme:'nature',
+    id:'beginner', name:'BEGINNER', desc:'DAY / GREEN', theme:'day',
     laps:3, rivals:6, timeStart:85, timeBonus:42,
     build(){
       addStraight(L.MEDIUM);
@@ -281,7 +281,7 @@ const COURSES = [
     }
   },
   {
-    id:'seaside', name:'SEASIDE', desc:'S-CURVES', theme:'nature',
+    id:'seaside', name:'SEASIDE', desc:'SUNSET', theme:'sunset',
     laps:3, rivals:8, timeStart:80, timeBonus:38,
     build(){
       addStraight(L.SHORT);
@@ -298,7 +298,7 @@ const COURSES = [
     }
   },
   {
-    id:'mountain', name:'MOUNTAIN', desc:'HILLY', theme:'nature',
+    id:'mountain', name:'MOUNTAIN', desc:'DESERT', theme:'desert',
     laps:3, rivals:8, timeStart:85, timeBonus:40,
     build(){
       addStraight(L.SHORT);
@@ -317,7 +317,7 @@ const COURSES = [
     }
   },
   {
-    id:'technical', name:'TECHNICAL', desc:'TIGHT TURNS', theme:'nature',
+    id:'technical', name:'TECHNICAL', desc:'RAIN', theme:'rain',
     laps:3, rivals:9, timeStart:82, timeBonus:38,
     build(){
       addStraight(L.SHORT);
@@ -338,7 +338,7 @@ const COURSES = [
     }
   },
   {
-    id:'city', name:'CITY', desc:'NIGHT / URBAN', theme:'city',
+    id:'city', name:'CITY', desc:'NIGHT / URBAN', theme:'night',
     laps:3, rivals:9, timeStart:85, timeBonus:40,
     build(){
       // 街区を思わせる、直線と直角気味のコーナーの組み合わせ
@@ -361,7 +361,7 @@ const COURSES = [
     }
   },
   {
-    id:'grandprix', name:'GRAND PRIX', desc:'LONG / HARD', theme:'nature',
+    id:'grandprix', name:'GRAND PRIX', desc:'DUSK', theme:'dusk',
     laps:3, rivals:9, timeStart:100, timeBonus:48,
     build(){
       addStraight(L.SHORT);
@@ -388,19 +388,40 @@ const COURSES = [
 function course(){ return COURSES[courseIndex] || COURSES[0]; }
 
 // ---- 風景テーマ ------------------------------------------------------
+// コースごとに異なる背景テーマ（sky1→sky2=空のグラデ, sun=太陽/月, scenery=遠景, rain=雨）
 const THEMES = {
-  nature: {
-    sky1:'#4a86e8', sky2:'#5c94fc', fog:'#5c94fc',
+  day: {      // 昼・緑地帯
+    sky1:'#4a86e8', sky2:'#a8d0ff', fog:'#a8d0ff',
     grassLight:'#3aa63a', grassDark:'#2e8c2e',
-    sun:'#fff7c0', scenery:'mountain', sceneryColor:'#2c6b3a'
+    sun:'#fff7c0', sunR:18, sunX:0.78, sunY:-48, scenery:'mountain', sceneryColor:'#2c6b3a'
   },
-  city: {
+  sunset: {   // 夕焼け
+    sky1:'#5a2a7a', sky2:'#ff9a54', fog:'#ff9a54',
+    grassLight:'#6c6a3e', grassDark:'#54522f',
+    sun:'#ff6a2a', sunR:30, sunX:0.66, sunY:-24, scenery:'mountain', sceneryColor:'#3a2a50'
+  },
+  desert: {   // 砂漠
+    sky1:'#7aa8d8', sky2:'#ecd6a8', fog:'#ecd6a8',
+    grassLight:'#d8b878', grassDark:'#c2a260',
+    sun:'#fff2d8', sunR:16, sunX:0.74, sunY:-44, scenery:'dunes', sceneryColor:'#caa972'
+  },
+  rain: {     // 雨（曇天＋雨粒）
+    sky1:'#39404a', sky2:'#5e6670', fog:'#5e6670',
+    grassLight:'#46524a', grassDark:'#3a463e',
+    sun:null, scenery:'mountain', sceneryColor:'#28303a', rain:true
+  },
+  night: {    // 夜・市街地
     sky1:'#0e1230', sky2:'#33305e', fog:'#33305e',
-    grassLight:'#5c5c68', grassDark:'#4e4e5a',   // 路肩は舗装・コンクリート
-    sun:'#ffe9b0', scenery:'city', sceneryColor:'#171b38'
+    grassLight:'#5c5c68', grassDark:'#4e4e5a',
+    sun:'#ffe9b0', sunR:18, sunX:0.78, sunY:-48, scenery:'city', sceneryColor:'#171b38'
+  },
+  dusk: {     // 夕暮れ（トワイライト）
+    sky1:'#161a44', sky2:'#c86a6a', fog:'#c86a6a',
+    grassLight:'#3c463c', grassDark:'#2e382e',
+    sun:'#ff7a5a', sunR:22, sunX:0.72, sunY:-22, scenery:'mountain', sceneryColor:'#241f42'
   }
 };
-function theme(){ return THEMES[course().theme] || THEMES.nature; }
+function theme(){ return THEMES[course().theme] || THEMES.day; }
 
 function buildTrack(){
   segments = [];
@@ -975,6 +996,9 @@ function renderView(p){
   // --- 衝突の火花 ---
   renderSparks(p);
 
+  // --- 天候（雨） ---
+  if(theme().rain) renderRain();
+
   ctx.restore();
 }
 
@@ -982,7 +1006,7 @@ function fogFactor(distance, density){
   return 1 / Math.pow(Math.E, (distance*distance*density));
 }
 
-// 背景（空・山・地平）
+// 背景（空・遠景・地平）。テーマごとに空/太陽/遠景/地面が変わる
 function renderBackground(playerY, skyOffset){
   const T = theme();
   const hy = Math.round(H*0.52 + playerY/8000*H); // 地平線
@@ -990,16 +1014,45 @@ function renderBackground(playerY, skyOffset){
   const g = ctx.createLinearGradient(0,0,0,hy);
   g.addColorStop(0, T.sky1); g.addColorStop(1, T.sky2);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,hy);
-  // 太陽（街コースでは月）
-  ctx.fillStyle=T.sun;
-  ctx.beginPath(); ctx.arc(W*0.78, hy-46, 18, 0, Math.PI*2); ctx.fill();
+  // 太陽 / 月（rain のように sun=null なら描かない）
+  if(T.sun){
+    const sr=T.sunR||18, sxp=(T.sunX!=null?T.sunX:0.78)*W, syp=hy+(T.sunY!=null?T.sunY:-46);
+    ctx.fillStyle=T.sun;
+    ctx.beginPath(); ctx.arc(sxp, syp, sr, 0, Math.PI*2); ctx.fill();
+  }
   // 遠景（パララックス）
   const off = ((skyOffset*40)%W + W)%W;
   ctx.fillStyle = T.sceneryColor;
-  if(T.scenery==='city') drawCity(hy, off); else drawMountains(hy, off);
+  if(T.scenery==='city') drawCity(hy, off);
+  else if(T.scenery==='dunes') drawDunes(hy, off);
+  else drawMountains(hy, off);
   // 手前の地面（下半分）— 道路が覆わない部分
   ctx.fillStyle = T.grassDark;
   ctx.fillRect(0, hy, W, H-hy);
+}
+// 砂丘（丸い砂の山）
+function drawDunes(hy, off){
+  const humps=[[36,24],[120,32],[210,20],[286,28],[330,18]];
+  for(let base=-W; base<=W; base+=W){
+    for(const [hx,hh] of humps){
+      ctx.beginPath();
+      ctx.ellipse(base-off+hx, hy, hh*2.4, hh, 0, Math.PI, Math.PI*2);
+      ctx.fill();
+    }
+  }
+}
+// 雨（斜めの雨粒を画面全体に。performance.now で流す）
+function renderRain(){
+  const t = performance.now()/1000;
+  ctx.strokeStyle='rgba(200,212,232,0.34)'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let i=0;i<70;i++){
+    const sx = (i*47) % W;
+    const spd = 520 + (i*53)%260;
+    const sy = ((t*spd + i*90) % (H+30)) - 15;
+    ctx.moveTo(sx, sy); ctx.lineTo(sx-4, sy+13);
+  }
+  ctx.stroke();
 }
 function drawMountains(hy, off){
   const w=W, peaks=[[0,0],[40,-30],[85,-8],[130,-40],[180,-14],[230,-34],[280,-6],[320,-26]];
@@ -1116,6 +1169,7 @@ function shade(hex, f){
 // 座標系: x=幅(右+), y=高さ(上+, 接地0), z=前後(前+/後-)。原点は車体中央の接地点。
 function drawF1(cx, baseY, w, color, tilt){
   tilt = U.limit(tilt||0, -1, 1);
+  const LZ = 1.5;                                    // 全長の倍率（全幅は変えずに前後だけ伸ばす）
   const yaw = tilt * 0.6;                            // ステアリングのヨー角
   const cyw = Math.cos(yaw), syw = Math.sin(yaw);
   // カメラ（車の後方 camD・上方 camH から、pitch だけ見下ろす）
@@ -1149,6 +1203,7 @@ function drawF1(cx, baseY, w, color, tilt){
     faces.push({ pts, depth: depth/k, col: shade(base, sh) });
   }
   function box(x0,x1,y0,y1,z0,z1, base){
+    z0*=LZ; z1*=LZ;                                  // 全長を伸ばす（前後方向のみ）
     const V=(x,y,z)=>({x,y,z});
     addPoly([V(x1,y0,z0),V(x1,y1,z0),V(x1,y1,z1),V(x1,y0,z1)], {x:1,y:0,z:0}, base);   // +X 右
     addPoly([V(x0,y0,z1),V(x0,y1,z1),V(x0,y1,z0),V(x0,y0,z0)], {x:-1,y:0,z:0}, base);  // -X 左
@@ -1158,6 +1213,7 @@ function drawF1(cx, baseY, w, color, tilt){
   }
   // 車輪（軸=x方向のシリンダー）。xc=横中心, hw=半幅, r=半径, zc=前後位置
   function wheel(xc, hw, r, zc){
+    zc*=LZ;                                          // 前後位置を伸ばす（ホイールベースを長く。半径rは不変＝円形維持）
     const N=10, tread='#141414', rim='#8c93a0', hub='#40434b';
     for(let i=0;i<N;i++){
       const a0=i/N*Math.PI*2, a1=(i+1)/N*Math.PI*2, am=(a0+a1)/2;
