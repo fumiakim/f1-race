@@ -138,7 +138,7 @@ const offDecel    = -maxSpeed / 2.6;
 const offLimit    = maxSpeed / 4;
 const centrifugal = 0.32;
 
-const CAR_WORLD_W = 720;                    // ライバル車の見かけ幅(world)
+const CAR_WORLD_W = 648;                    // ライバル車の見かけ幅(world)
 const PLAYER_CAR_W= 0.163;                  // 自車の描画幅（画面幅に対する比）
 const SELF_WORLD_W= 432;                    // 自車の当たり判定上の幅(world)。描画は上の比で小さめ
 // 当たり判定の横幅 ÷ 車幅。1.0未満＝少し重なるまで接触しない（かすっただけでは当たらない）
@@ -218,7 +218,7 @@ const ROAD = {
   LEN:  { NONE:0, SHORT:12, MEDIUM:24, LONG:48 },
   // 遠心力がステアリングに勝つ速度 = 1/(curve*centrifugal)。
   // EASY でも最高速だとわずかに膨らむ強さにして、全開のまま曲がり切れないようにする
-  CURVE:{ NONE:0, EASY:3, MEDIUM:5, HARD:7 },
+  CURVE:{ NONE:0, EASY:4, MEDIUM:7, HARD:10 },
   HILL: { NONE:0, LOW:20, MEDIUM:40, HIGH:60 }
 };
 
