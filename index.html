@@ -424,16 +424,15 @@ function buildTrack(){
 }
 
 // カーブ値を積分して2Dの見取図（ミニマップ用の軌跡）を作る。
-// 0..1 に正規化し、長辺を基準に中央寄せする。
+// 地図のカーブ率をプレイ画面の道路の曲がり率に一致させる。
+// 走行時、道路の向き(角度)は概ね (Σcurve)/segmentLength なので、
+// K = 1/segmentLength にすると地図の曲がりが実走行の曲がりと一致する。
+// 閉ループにするための一様なカーブ足し込みは行わない（地図と走行の食い違いの原因のため）。
 function buildTrackMap(){
   const raw = [];
   const n = segments.length;
   if(!n) return [];
-  const K = 0.006;                      // カーブ値→角度の係数
-  // 1周でちょうど360°回るよう、不足分を全セグメントへ均等配分する。
-  let sum = 0;
-  for(const s of segments) sum += s.curve;
-  const adjust = (Math.PI*2 - sum*K) / n;
+  const K = 1/segmentLength;             // カーブ値→角度（実走行に合わせた係数）
 
   // 軌跡を積分する。heading=0 を画面上方向とし、右カーブ(curve>0)が
   // 画面でも右へ曲がるようにする（画面座標は下が +y なので cos を反転）。
@@ -441,14 +440,14 @@ function buildTrackMap(){
   const STEP = 4;                       // 4セグメントごとにサンプル
   raw.push({x, y});                     // 始点（スタート/フィニッシュ地点）
   for(let i=0;i<n;i++){
-    heading += segments[i].curve * K + adjust;
+    heading += segments[i].curve * K;
     x += Math.sin(heading);
     y -= Math.cos(heading);
     if((i+1) % STEP === 0) raw.push({x, y});
   }
   if(raw.length < 2) return [];
 
-  // スタートとゴールを同一地点にする：閉じ誤差を全点へ線形配分して輪を閉じる
+  // スタートとゴールの位置ずれだけを線形配分して輪を閉じる（各カーブの形は保つ）。
   const ex = raw[raw.length-1].x - raw[0].x;
   const ey = raw[raw.length-1].y - raw[0].y;
   const m = raw.length - 1;
