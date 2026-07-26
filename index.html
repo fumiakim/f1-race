@@ -1234,17 +1234,12 @@ function drawF1(cx, baseY, w, color, tilt){
     }
   }
 
-  // 影（接地点）
-  ctx.save(); ctx.translate(cx, baseY);
-  ctx.fillStyle='rgba(0,0,0,0.28)';
-  ctx.beginPath(); ctx.ellipse(0,0,w*0.5,w*0.09,0,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-
   // 各パーツを面リストへ
-  wheel(-0.40, 0.12, 0.17, -0.24);                        // 左リアタイヤ
-  wheel( 0.40, 0.12, 0.17, -0.24);                        // 右リアタイヤ
-  wheel(-0.34, 0.085, 0.13, 0.50);                        // 左フロントタイヤ
-  wheel( 0.34, 0.085, 0.13, 0.50);                        // 右フロントタイヤ
+  const WHEELS = [                                         // [xc, hw, r, zc]
+    [-0.40, 0.12,  0.187, -0.24],  [0.40, 0.12,  0.187, -0.24],   // リア（直径1.1倍）
+    [-0.34, 0.085, 0.247,  0.50],  [0.34, 0.085, 0.247,  0.50],   // フロント（直径1.9倍）
+  ];
+  for(const [xc,hw,r,zc] of WHEELS) wheel(xc,hw,r,zc);
   box(-0.22,0.22, 0.06,0.40, -0.44,0.42, color);          // ボディ
   box(-0.12,0.12, 0.10,0.28,  0.42,0.66, color);          // ノーズ
   box(-0.09,0.09, 0.40,0.52, -0.10,0.16, '#15151f');      // コックピット
@@ -1256,6 +1251,20 @@ function drawF1(cx, baseY, w, color, tilt){
   // 接地点(車輪の最下点)が baseY に来るよう縦オフセットを合わせる
   let maxY=-1e9; for(const f of faces) for(const p of f.pts) if(p.y>maxY) maxY=p.y;
   const yOff = -maxY;
+
+  // 影：各タイヤの接地点(地面 y=0)を投影し、その位置に楕円を落とす＝正確に接地して浮かない
+  ctx.save(); ctx.translate(cx, baseY);
+  ctx.fillStyle='rgba(0,0,0,0.26)';
+  for(const [xc,hw,r,zc] of WHEELS){
+    const gL=proj(yawDir(xc-hw*1.6,0,zc*LZ)), gR=proj(yawDir(xc+hw*1.6,0,zc*LZ));
+    const gF=proj(yawDir(xc,0,zc*LZ + r*1.2)), gB=proj(yawDir(xc,0,zc*LZ - r*1.2));
+    const ex=(gL.x+gR.x)/2, ey=(gL.y+gR.y+gF.y+gB.y)/4;
+    const rx=Math.max(2, Math.hypot(gR.x-gL.x, gR.y-gL.y)/2);
+    const ry=Math.max(1.5, Math.hypot(gF.x-gB.x, gF.y-gB.y)/2);
+    const ang=Math.atan2(gR.y-gL.y, gR.x-gL.x);
+    ctx.beginPath(); ctx.ellipse(ex, ey+yOff, rx, ry, ang, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
 
   // 深度ソート（奥→手前）して塗る
   faces.sort((a,b)=>b.depth-a.depth);
